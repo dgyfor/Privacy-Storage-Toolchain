@@ -1,0 +1,2960 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
+    <title>三盘映射器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background: #121212;
+            padding: 0;
+            padding-bottom: 100px;
+            min-height: 100vh;
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+            color: #e2e8f0;
+        }
+        .app {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* 顶部栏紧凑布局 */
+        .top-bar {
+            display: flex;
+            align-items: center;
+            height: 48px;
+            padding: 0 6px;
+            background: #1e1e1e;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            gap: 2px;
+        }
+        .top-bar .back-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: transparent;
+            color: #e2e8f0;
+            font-size: 18px;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: background 0.15s;
+            flex-shrink: 0;
+        }
+        .top-bar .back-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .top-bar .back-btn:active:not(:disabled) {
+            background: #334155;
+        }
+        .top-bar .title-area {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 0 4px;
+        }
+        .top-bar .title-area .main-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #f1f5f9;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+        }
+        .top-bar .title-area .sub-path {
+            font-size: 10px;
+            color: #94a3b8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .top-bar .action-btns {
+            display: flex;
+            align-items: center;
+            gap: 0px;
+            flex-shrink: 0;
+        }
+        .top-bar .action-btns button {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: transparent;
+            color: #e2e8f0;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: background 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .top-bar .action-btns button:active {
+            background: #334155;
+        }
+
+        /* 更多弹出菜单 */
+        .more-menu {
+            position: fixed;
+            top: 52px;
+            right: 8px;
+            background: #2d2d2d;
+            border-radius: 12px;
+            min-width: 150px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            z-index: 250;
+            display: none;
+            overflow: hidden;
+            border: 1px solid #444;
+        }
+        .more-menu.visible {
+            display: block;
+        }
+        .more-menu .menu-item {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #e2e8f0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #3a3a3a;
+            background: transparent;
+            width: 100%;
+            border-left: none;
+            border-right: none;
+            border-top: none;
+        }
+        .more-menu .menu-item:last-child {
+            border-bottom: none;
+        }
+        .more-menu .menu-item:active {
+            background: #3f3f3f;
+        }
+
+        .search-wrap {
+            padding: 4px 12px 6px;
+            background: #1e1e1e;
+        }
+        .search-box {
+            width: 100%;
+            padding: 6px 12px;
+            font-size: 13px;
+            border: 1px solid #334155;
+            border-radius: 20px;
+            outline: none;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .sort-menu {
+            position: fixed;
+            top: 52px;
+            right: 12px;
+            background: #2d2d2d;
+            border-radius: 12px;
+            min-width: 170px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 200;
+            display: none;
+            overflow: hidden;
+        }
+        .sort-menu.visible {
+            display: block;
+        }
+        .sort-menu .sort-item {
+            padding: 10px 16px;
+            font-size: 13px;
+            color: #e2e8f0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #3a3a3a;
+        }
+        .sort-menu .sort-item:last-child {
+            border-bottom: none;
+        }
+        .sort-menu .sort-item:active {
+            background: #3f3f3f;
+        }
+        .sort-menu .sort-item.active .check {
+            color: #3b82f6;
+        }
+        .sort-menu .sort-item .check {
+            color: transparent;
+        }
+
+        .count-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 12px;
+            font-size: 11px;
+            color: #94a3b8;
+        }
+
+        .tree-container {
+            background: #121212;
+            min-height: 200px;
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tree-container ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .tree-container li {
+            padding: 0;
+            margin: 0;
+            border-bottom: 1px solid #1e293b;
+        }
+        .tree-container .node-wrapper {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: #121212;
+            transition: background 0.15s;
+            cursor: pointer;
+            gap: 10px;
+            user-select: none;
+            touch-action: pan-y;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 44px;
+            position: relative;
+        }
+        .tree-container .node-wrapper:active {
+            background: #1e293b;
+        }
+        .tree-container .node-wrapper .icon {
+            font-size: 28px;
+            width: 32px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .tree-container .node-wrapper .info-col {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0px;
+        }
+        .tree-container .node-wrapper .name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #f1f5f9;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.3;
+        }
+        .tree-container .node-wrapper .meta {
+            font-size: 10px;
+            color: #94a3b8;
+        }
+        .tree-container .node-wrapper .arrow {
+            color: #64748b;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .tree-container .node-wrapper .radio-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid #64748b;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: transparent;
+            transition: 0.15s;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+        }
+        .tree-container .node-wrapper .radio-dot.checked {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+        .multi-select-mode .tree-container .node-wrapper .radio-dot {
+            display: flex;
+        }
+        .tree-container .node-wrapper.linked {
+            border-left: 3px solid #22c55e;
+        }
+        .tree-container .node-wrapper.selected {
+            background: #1e3a8a;
+        }
+        .tree-container .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #64748b;
+        }
+        .tree-container .empty-state .big-icon {
+            font-size: 40px;
+            margin-bottom: 8px;
+            opacity: 0.5;
+        }
+        .highlight {
+            background: #fef08a;
+            color: #0f172a;
+            padding: 0 2px;
+            border-radius: 3px;
+        }
+        .highlight-target {
+            background: #3b82f6 !important;
+            color: white !important;
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+
+        .multi-mode-hint,
+        .move-mode-hint {
+            margin: 0 12px 4px;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 500;
+            display: inline-block;
+        }
+        .multi-mode-hint {
+            background: #1e3a8a;
+            color: #93c5fd;
+            border: 1px solid #1e40af;
+        }
+        .move-mode-hint {
+            background: #78350f;
+            color: #fcd34d;
+            border: 1px solid #92400e;
+        }
+
+        .bottom-menu {
+            position: fixed;
+            bottom: 48px;
+            left: 0;
+            width: 100%;
+            background: #1e293b;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+            padding: 6px 12px;
+            display: none;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            z-index: 99;
+            padding-bottom: calc(6px + env(safe-area-inset-bottom));
+        }
+        .bottom-menu.visible {
+            display: flex;
+        }
+        .bottom-menu .menu-info {
+            flex: 1;
+            min-width: 50px;
+            font-size: 12px;
+            color: #cbd5e1;
+        }
+        .bottom-menu .menu-info strong {
+            color: #f1f5f9;
+        }
+        .bottom-menu .menu-actions {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .bottom-menu .menu-actions button {
+            padding: 5px 12px;
+            border-radius: 30px;
+            border: none;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            background: #334155;
+            color: #e2e8f0;
+            white-space: nowrap;
+        }
+        .bottom-menu .menu-actions button:active {
+            transform: scale(0.96);
+        }
+        .bottom-menu .menu-actions .primary {
+            background: #3b82f6;
+            color: white;
+        }
+        .bottom-menu .menu-actions .danger {
+            background: #7f1d1d;
+            color: #fca5a5;
+        }
+        .bottom-menu .menu-actions .warn {
+            background: #78350f;
+            color: #fcd34d;
+        }
+
+        .bottom-tabs {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: #1e1e1e;
+            border-top: 1px solid #334155;
+            display: flex;
+            z-index: 100;
+            padding-bottom: env(safe-area-inset-bottom);
+            height: 48px;
+        }
+        .bottom-tabs .tab {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0 6px;
+            font-weight: 500;
+            font-size: 11px;
+            color: #64748b;
+            border-bottom: 2px solid transparent;
+            transition: 0.2s;
+            cursor: pointer;
+            background: none;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+        }
+        .bottom-tabs .tab.active {
+            color: #3b82f6;
+            border-bottom-color: #3b82f6;
+        }
+        .bottom-tabs .tab:active {
+            background: #334155;
+        }
+        .bottom-tabs .tab .tab-badge {
+            font-size: 9px;
+            background: #334155;
+            color: #94a3b8;
+            border-radius: 20px;
+            padding: 0 5px;
+            margin-left: 3px;
+            font-weight: 500;
+        }
+        .bottom-tabs .tab.active .tab-badge {
+            background: #1e3a8a;
+            color: #93c5fd;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s;
+        }
+        .modal-overlay.visible {
+            display: flex;
+        }
+        .modal-box {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 16px;
+            max-width: 92%;
+            width: 360px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            animation: slideUp 0.25s;
+            color: #e2e8f0;
+        }
+        .modal-box h3 {
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: #f1f5f9;
+            text-align: center;
+        }
+        .modal-box .sub-location {
+            text-align: center;
+            font-size: 11px;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            background: #0f172a;
+            padding: 4px 10px;
+            border-radius: 30px;
+            display: inline-block;
+            width: auto;
+            margin-left: auto;
+            margin-right: auto;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .modal-box .field {
+            margin-bottom: 10px;
+        }
+        .modal-box .field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: #cbd5e1;
+            margin-bottom: 2px;
+        }
+        .modal-box .field input,
+        .modal-box .field textarea {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        .modal-box .field textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+        .modal-box .type-toggle {
+            display: flex;
+            gap: 8px;
+            margin: 4px 0;
+        }
+        .modal-box .type-toggle button {
+            flex: 1;
+            padding: 6px 0;
+            border: 2px solid #334155;
+            border-radius: 30px;
+            background: #0f172a;
+            font-weight: 600;
+            font-size: 12px;
+            color: #64748b;
+            cursor: pointer;
+        }
+        .modal-box .type-toggle button.active {
+            border-color: #3b82f6;
+            background: #1e3a8a;
+            color: #93c5fd;
+        }
+        .modal-box .batch-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 4px 0 8px;
+            font-size: 12px;
+            color: #cbd5e1;
+        }
+        .modal-box .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .modal-box .actions button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .modal-box .actions .confirm {
+            background: #3b82f6;
+            color: white;
+        }
+        .modal-box .actions .cancel {
+            background: #334155;
+            color: #cbd5e1;
+        }
+
+        /* 映射向导紧凑版 */
+        .map-wizard .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 10px;
+            color: #94a3b8;
+        }
+        .map-wizard .step-indicator .step-dot {
+            flex: 1;
+            text-align: center;
+            padding: 2px 0;
+            border-bottom: 2px solid #334155;
+            transition: 0.2s;
+        }
+        .map-wizard .step-indicator .step-dot.active {
+            border-color: #3b82f6;
+            color: #e2e8f0;
+            font-weight: 600;
+        }
+        .map-wizard .step-content {
+            min-height: 160px;
+        }
+        .map-wizard .file-list {
+            max-height: 140px;
+            overflow-y: auto;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            background: #0f172a;
+            padding: 2px 0;
+            margin: 4px 0;
+        }
+        .map-wizard .file-list .file-item {
+            display: flex;
+            align-items: center;
+            padding: 4px 8px;
+            gap: 6px;
+            border-bottom: 1px solid #1e293b;
+            cursor: pointer;
+        }
+        .map-wizard .file-list .file-item:last-child {
+            border-bottom: none;
+        }
+        .map-wizard .file-list .file-item .check-box {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #64748b;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            background: transparent;
+            transition: 0.15s;
+        }
+        .map-wizard .file-list .file-item .check-box.checked {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+        .map-wizard .file-list .file-item .file-icon {
+            font-size: 18px;
+            width: 24px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .map-wizard .file-list .file-item .file-name {
+            flex: 1;
+            font-size: 12px;
+            color: #e2e8f0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .map-wizard .file-list .file-item .file-meta {
+            font-size: 10px;
+            color: #64748b;
+            flex-shrink: 0;
+        }
+        .map-wizard .pair-list {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .map-wizard .pair-list .pair-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 6px;
+            background: #0f172a;
+            border-radius: 6px;
+            border: 1px solid #1e293b;
+        }
+        .map-wizard .pair-list .pair-row .pair-left,
+        .map-wizard .pair-list .pair-row .pair-right {
+            flex: 1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #e2e8f0;
+            cursor: pointer;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .map-wizard .pair-list .pair-row .pair-left {
+            background: #1e3a8a;
+        }
+        .map-wizard .pair-list .pair-row .pair-right {
+            background: #1e3a8a;
+        }
+        .map-wizard .pair-list .pair-row .pair-arrow {
+            color: #64748b;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        .map-wizard .hint-text {
+            font-size: 11px;
+            color: #94a3b8;
+            margin: 2px 0 4px;
+        }
+        .map-wizard .nav-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .map-wizard .nav-buttons button {
+            flex: 1;
+            padding: 6px;
+            border: none;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .map-wizard .nav-buttons .prev {
+            background: #334155;
+            color: #cbd5e1;
+        }
+        .map-wizard .nav-buttons .next {
+            background: #3b82f6;
+            color: white;
+        }
+        .map-wizard .nav-buttons .next:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .map-wizard .preview-list {
+            max-height: 140px;
+            overflow-y: auto;
+            border: 1px solid #2d3748;
+            border-radius: 6px;
+            background: #0f172a;
+            padding: 2px 0;
+        }
+        .map-wizard .preview-list .preview-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 10px;
+            border-bottom: 1px solid #1e293b;
+            font-size: 12px;
+        }
+        .map-wizard .preview-list .preview-item:last-child {
+            border-bottom: none;
+        }
+        .map-wizard .preview-list .preview-item .preview-left {
+            color: #93c5fd;
+        }
+        .map-wizard .preview-list .preview-item .preview-right {
+            color: #fcd34d;
+        }
+        .map-wizard .upload-area {
+            border: 2px dashed #334155;
+            border-radius: 10px;
+            padding: 20px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+            margin: 6px 0;
+        }
+        .map-wizard .upload-area:active {
+            background: #1e293b;
+        }
+        .map-wizard .upload-area .upload-icon {
+            font-size: 32px;
+            opacity: 0.6;
+        }
+        .map-wizard .upload-area .upload-hint {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+        .map-wizard .upload-area .file-name {
+            color: #3b82f6;
+            font-weight: 500;
+        }
+        /* 多文件显示 */
+        .map-wizard .upload-area .file-names {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #3b82f6;
+            max-height: 60px;
+            overflow-y: auto;
+            word-break: break-all;
+            line-height: 1.4;
+        }
+        .map-wizard .disk-selector {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin: 4px 0 8px;
+        }
+        .map-wizard .disk-selector .disk-option {
+            padding: 4px 12px;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            background: #0f172a;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.15s;
+        }
+        .map-wizard .disk-selector .disk-option.active {
+            border-color: #3b82f6;
+            background: #1e3a8a;
+            color: #93c5fd;
+        }
+
+        .context-menu {
+            position: fixed;
+            background: #1e293b;
+            border-radius: 12px;
+            min-width: 150px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            z-index: 250;
+            display: none;
+            overflow: hidden;
+            border: 1px solid #334155;
+            padding: 4px 0;
+        }
+        .context-menu.visible {
+            display: block;
+        }
+        .context-menu .menu-item {
+            padding: 10px 16px;
+            font-size: 13px;
+            color: #e2e8f0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.1s;
+        }
+        .context-menu .menu-item:active {
+            background: #334155;
+        }
+        .context-menu .menu-item .mi-icon {
+            font-size: 16px;
+        }
+        .context-menu .menu-item .mi-label {
+            flex: 1;
+        }
+
+        .toast {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: #1e293b;
+            color: #f1f5f9;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 500;
+            z-index: 300;
+            opacity: 0;
+            transition: opacity 0.3s, transform 0.3s;
+            pointer-events: none;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            max-width: 90%;
+            text-align: center;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .toast.success {
+            background: #14532d;
+            color: #86efac;
+        }
+        .toast.error {
+            background: #7f1d1d;
+            color: #fca5a5;
+        }
+        .toast.info {
+            background: #1e3a8a;
+            color: #93c5fd;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        @keyframes slideUp {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 3px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 文件上传隐藏控件 -->
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+    <!-- === 修改点1：添加 multiple 属性 === -->
+    <input type="file" id="mapConfigFile" accept=".txt,.cfg" style="display:none" multiple onchange="handleConfigFile(event)">
+
+    <!-- 主应用 -->
+    <div class="app">
+        <div class="top-bar">
+            <button class="back-btn" id="backBtn" onclick="goBack()" disabled>←</button>
+            <div class="title-area">
+                <div class="main-title" id="mainTitle">📁 本地</div>
+                <div class="sub-path" id="subPath">根目录</div>
+            </div>
+            <div class="action-btns">
+                <button onclick="toggleSearch()" title="搜索">🔍</button>
+                <button id="multiSelectBtn" onclick="toggleMultiSelectMode()" title="多选" style="color:#94a3b8;">☑️</button>
+                <button onclick="openAddModal()" title="添加">➕</button>
+                <button id="moreMenuBtn" onclick="toggleMoreMenu()" title="更多">⋮</button>
+            </div>
+        </div>
+
+        <!-- 更多菜单 -->
+        <div class="more-menu" id="moreMenu">
+            <button class="menu-item" onclick="openMapWizard(); toggleMoreMenu();"><span>🔗</span> 建立映射</button>
+            <button class="menu-item" onclick="exportData(); toggleMoreMenu();"><span>📤</span> 导出备份</button>
+            <button class="menu-item" onclick="document.getElementById('importFile').click(); toggleMoreMenu();"><span>📥</span> 导入备份</button>
+            <button class="menu-item" onclick="toggleSortMenu(); toggleMoreMenu();"><span>🔽</span> 排序</button>
+        </div>
+
+        <div class="sort-menu" id="sortMenu">
+            <div class="sort-item" data-sort="name-asc" onclick="changeSort('name-asc')"><span>名称 (A→Z)</span><span class="check">✓</span></div>
+            <div class="sort-item" data-sort="name-desc" onclick="changeSort('name-desc')"><span>名称 (Z→A)</span><span class="check">✓</span></div>
+            <div class="sort-item" data-sort="time-desc" onclick="changeSort('time-desc')"><span>最新优先</span><span class="check">✓</span></div>
+            <div class="sort-item" data-sort="size-desc" onclick="changeSort('size-desc')"><span>文件大小 (大→小)</span><span class="check">✓</span></div>
+            <div class="sort-item" data-sort="size-asc" onclick="changeSort('size-asc')"><span>文件大小 (小→大)</span><span class="check">✓</span></div>
+        </div>
+
+        <div class="search-wrap" id="searchWrap" style="display:none;">
+            <input type="text" id="searchInput" class="search-box" placeholder="🔍 搜索整个云盘（递归）..." oninput="renderCurrentTree()">
+        </div>
+
+        <div style="padding: 0 12px;">
+            <div id="multiModeHint" class="multi-mode-hint" style="display:none;">☑️ 多选模式 · 左滑切换选择</div>
+            <div id="moveModeHint" class="move-mode-hint" style="display:none;">📦 移动模式 · 点击文件夹导航到目标</div>
+        </div>
+
+        <div class="count-bar">
+            <span id="countText">共 0 项</span>
+            <span id="sortLabel" class="sort-label">名称 (A→Z)</span>
+        </div>
+
+        <div class="tree-container" id="treeContainer">
+            <div class="empty-state"><div class="big-icon">📭</div><div class="hint">加载中...</div></div>
+        </div>
+    </div>
+
+    <div class="bottom-menu" id="bottomMenu">
+        <div class="menu-info" id="menuInfo">已选 0 项</div>
+        <div class="menu-actions" id="menuActions"></div>
+    </div>
+
+    <div class="bottom-tabs" id="bottomTabs">
+        <button class="tab active" data-tree="local">📁 本地 <span class="tab-badge" id="badge-local">0</span></button>
+        <button class="tab" data-tree="cloudA">☁️ 云盘A <span class="tab-badge" id="badge-cloudA">0</span></button>
+        <button class="tab" data-tree="cloudB">☁️ 云盘B <span class="tab-badge" id="badge-cloudB">0</span></button>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay"><div class="modal-box"><h3 id="modalTitle">➕ 添加新项目</h3><div class="sub-location" id="modalLocation">📍 位置：根目录</div><div class="field" id="singleNameField"><label>名称</label><input type="text" id="modalNameInput" placeholder="输入名称..."></div><div class="field" id="sizeField" style="display:none;"><label>大小（可选，支持KB/MB/GB）</label><input type="text" id="modalSizeInput" placeholder="留空默认为0"></div><div class="field" id="batchField" style="display:none;"><label>批量名称（每行一个）</label><textarea id="modalBatchInput" placeholder="文件1&#10;文件2 2MB&#10;文件夹3"></textarea></div><div class="type-toggle" id="typeToggle"><button id="typeFolder" class="active" onclick="setType('folder')">📁 文件夹</button><button id="typeFile" onclick="setType('file')">📄 文件</button></div><div class="batch-toggle"><input type="checkbox" id="batchModeCheck" onchange="toggleBatchMode()"><label for="batchModeCheck">批量添加（多行）</label></div><div class="actions"><button class="cancel" onclick="closeModal()">取消</button><button class="confirm" id="modalConfirmBtn">确认</button></div></div></div>
+
+    <div class="modal-overlay" id="mapWizardOverlay"><div class="modal-box map-wizard" style="width:420px;max-width:96%;padding:12px;"><h3 id="mapWizardTitle">🔗 建立映射</h3><div class="step-indicator" id="stepIndicator"><div class="step-dot active" data-step="0">模式</div><div class="step-dot" data-step="1">云盘</div><div class="step-dot" data-step="2">本地</div><div class="step-dot" data-step="3">目标</div><div class="step-dot" data-step="4">配对</div><div class="step-dot" data-step="5">确认</div></div><div class="step-content" id="mapWizardContent"></div><div class="nav-buttons" id="mapWizardNav"><button class="prev" onclick="mapWizardPrev()">上一步</button><button class="next" id="mapWizardNext" onclick="mapWizardNext()">下一步</button></div></div></div>
+
+    <div class="context-menu" id="contextMenu">
+        <div class="menu-item" onclick="handleContextCopyPath()"><span class="mi-icon">📋</span><span class="mi-label">复制路径</span></div>
+        <div class="menu-item" onclick="handleContextCopyName()"><span class="mi-icon">📝</span><span class="mi-label">复制文件名</span></div>
+        <div class="menu-item" id="menuJumpToLink" onclick="handleContextJumpToLink()" style="display:none;"><span class="mi-icon">🔗</span><span class="mi-label">跳转到映射文件</span></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ============================================================
+        //  数据层
+        // ============================================================
+        const TREE_IDS = ['local', 'cloudA', 'cloudB'];
+        const DEFAULT_LABELS = { local: '📁 本地', cloudA: '☁️ 云盘A', cloudB: '☁️ 云盘B' };
+        let data = {
+            trees: {
+                local: { id: 'local', label: '📁 本地', nodes: [], currentDir: null },
+                cloudA: { id: 'cloudA', label: '☁️ 云盘A', nodes: [], currentDir: null },
+                cloudB: { id: 'cloudB', label: '☁️ 云盘B', nodes: [], currentDir: null }
+            },
+            links: [],
+            nextId: 1,
+            currentTreeId: 'local',
+            selectedNodes: [],
+            multiMode: false,
+            movingMode: false,
+            sortKey: 'name-asc'
+        };
+        let _addTargetParentId = null;
+        let _toastTimer = null;
+        let _searchVisible = false;
+        let _navStack = [];
+
+        // === 修改点2：wizardState 添加 uploadFileNames 数组 ===
+        let wizardState = {
+            step: 0,
+            mode: null,
+            targetDisk: null,
+            localDirId: null,
+            targetDirId: null,
+            localSelected: [],
+            targetSelected: [],
+            pairs: [],
+            swapSource: null,
+            configContent: null,
+            configParsed: null,
+            uploadFileName: null,
+            uploadFileNames: [] // 多文件存储
+        };
+        let contextTarget = { treeId: null, nodeId: null, node: null };
+
+        const SORT_FUNCS = {
+            'name-asc': (a, b) => a.name.localeCompare(b.name),
+            'name-desc': (a, b) => b.name.localeCompare(a.name),
+            'time-desc': (a, b) => (b.createTime || 0) - (a.createTime || 0),
+            'size-desc': (a, b) => (b.size || 0) - (a.size || 0),
+            'size-asc': (a, b) => (a.size || 0) - (b.size || 0)
+        };
+        const SORT_LABELS = {
+            'name-asc': '名称 (A→Z)',
+            'name-desc': '名称 (Z→A)',
+            'time-desc': '最新优先',
+            'size-desc': '大小 (大→小)',
+            'size-asc': '大小 (小→大)'
+        };
+
+        // ============================================================
+        //  存储
+        // ============================================================
+        function saveState() { localStorage.setItem('tripleMapperV9', JSON.stringify(data)); }
+
+        function loadState() {
+            try {
+                const raw = localStorage.getItem('tripleMapperV9');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed.trees && parsed.links !== undefined) {
+                        data = parsed;
+                        TREE_IDS.forEach(id => {
+                            if (!data.trees[id]) data.trees[id] = { id, label: DEFAULT_LABELS[id], nodes: [],
+                                currentDir: null };
+                            if (!data.trees[id].label) data.trees[id].label = DEFAULT_LABELS[id];
+                            if (!data.trees[id].nodes) data.trees[id].nodes = [];
+                            if (data.trees[id].currentDir === undefined) data.trees[id].currentDir = null;
+                        });
+                        if (!data.selectedNodes) data.selectedNodes = [];
+                        if (data.multiMode === undefined) data.multiMode = false;
+                        if (data.movingMode === undefined) data.movingMode = false;
+                        if (!data.sortKey) data.sortKey = 'name-asc';
+                        if (!data.currentTreeId) data.currentTreeId = 'local';
+                        fixNextId();
+                        return true;
+                    }
+                }
+            } catch (_) {}
+            return false;
+        }
+
+        function fixNextId() {
+            let maxNum = 0;
+            TREE_IDS.forEach(treeId => {
+                const walk = (nodes) => {
+                    nodes.forEach(n => {
+                        const num = parseInt(String(n.id).replace(/\D/g, ''));
+                        if (!isNaN(num) && num > maxNum) maxNum = num;
+                        if (n.children) walk(n.children);
+                    });
+                };
+                walk(data.trees[treeId].nodes);
+            });
+            data.links.forEach(l => {
+                const num = parseInt(String(l.id).replace(/\D/g, ''));
+                if (!isNaN(num) && num > maxNum) maxNum = num;
+            });
+            data.nextId = Math.max(data.nextId, maxNum + 1);
+        }
+
+        // ============================================================
+        //  示例数据
+        // ============================================================
+        function initDemo() {
+            data.trees.cloudA.nodes = [{
+                id: 'n5',
+                name: '红三',
+                type: 'folder',
+                size: 0,
+                createTime: Date.now() - 3600000 * 24 * 30,
+                children: [
+                    { id: 'n14', name: '文档9', type: 'folder', size: 0, createTime: Date.now() - 3600000 * 24 * 20,
+                        children: [] },
+                    { id: 'n15', name: '图片9', type: 'folder', size: 0, createTime: Date.now() - 3600000 * 24 * 15,
+                        children: [] },
+                    { id: 'n16', name: '视频9', type: 'folder', size: 0, createTime: Date.now() - 3600000 * 24 * 10,
+                        children: [] },
+                    { id: 'n17', name: '备份96', type: 'folder', size: 0, createTime: Date.now() - 3600000 * 24 * 5,
+                        children: [] }
+                ]
+            }];
+            data.trees.cloudA.currentDir = null;
+            data.trees.cloudB.nodes = [{ id: 'n4', name: 'photo_2026.jpg', type: 'file', size: 1048576,
+                createTime: Date.now() - 3600000 * 24 }];
+            data.trees.cloudB.currentDir = null;
+            data.trees.local.nodes = [{
+                id: 'n1',
+                name: '每日自拍',
+                type: 'folder',
+                size: 0,
+                createTime: Date.now() - 3600000 * 24 * 7,
+                children: [
+                    { id: 'n2', name: 'IMG_20260812.jpg', type: 'file', size: 2736783,
+                        createTime: Date.now() - 3600000 * 24 * 2 },
+                    { id: 'n3', name: 'IMG_20260811.jpg', type: 'file', size: 2663383,
+                        createTime: Date.now() - 3600000 * 24 * 3 }
+                ]
+            }];
+            data.trees.local.currentDir = null;
+            data.links = [];
+            data.nextId = 20;
+            data.currentTreeId = 'local';
+            data.selectedNodes = [];
+            data.multiMode = false;
+            data.movingMode = false;
+            data.sortKey = 'name-asc';
+            saveState();
+        }
+
+        // ============================================================
+        //  工具函数
+        // ============================================================
+        function getNode(treeId, nodeId) {
+            const tree = data.trees[treeId];
+            if (!tree || !Array.isArray(tree.nodes)) return null;
+            const find = (nodes) => {
+                if (!Array.isArray(nodes)) return null;
+                for (let n of nodes) {
+                    if (n.id === nodeId) return n;
+                    if (n.children) { const f = find(n.children); if (f) return f; }
+                }
+                return null;
+            };
+            return find(tree.nodes);
+        }
+
+        function getNodePath(treeId, nodeId) {
+            const tree = data.trees[treeId];
+            if (!tree) return null;
+            const find = (nodes, ancestors) => {
+                for (let n of nodes) {
+                    const currentPath = [...ancestors, n];
+                    if (n.id === nodeId) return currentPath;
+                    if (n.children) { const result = find(n.children, currentPath); if (result) return result; }
+                }
+                return null;
+            };
+            return find(tree.nodes, []);
+        }
+
+        function getFullPath(treeId, nodeId) {
+            const path = getNodePath(treeId, nodeId);
+            if (!path) return '';
+            return path.map(n => n.name).join('/');
+        }
+
+        function getAllDescendantIds(node) {
+            let ids = [node.id];
+            if (node.children && node.children.length > 0) {
+                node.children.forEach(child => { ids = ids.concat(getAllDescendantIds(child)); });
+            }
+            return ids;
+        }
+
+        function findLinkedPairs(nodeId, treeId) {
+            const result = [];
+            data.links.forEach(link => {
+                if (link.source.treeId === treeId && link.source.nodeId === nodeId) {
+                    result.push({ linkId: link.id, otherTree: link.target.treeId, otherNode: link.target.nodeId });
+                }
+                if (link.target.treeId === treeId && link.target.nodeId === nodeId) {
+                    result.push({ linkId: link.id, otherTree: link.source.treeId, otherNode: link.source.nodeId });
+                }
+            });
+            return result;
+        }
+
+        function isNodeLinked(treeId, nodeId) { return findLinkedPairs(nodeId, treeId).length > 0; }
+
+        function removeLinksByNodeIds(nodeIds) {
+            data.links = data.links.filter(link => !nodeIds.includes(link.source.nodeId) && !nodeIds.includes(link.target
+                .nodeId));
+        }
+
+        function countNodes(nodes) {
+            let c = nodes.length;
+            nodes.forEach(n => { if (n.children) c += countNodes(n.children); });
+            return c;
+        }
+
+        function showToast(msg, type = 'info', duration = 2000) {
+            const el = document.getElementById('toast');
+            if (_toastTimer) clearTimeout(_toastTimer);
+            el.textContent = msg;
+            el.className = 'toast ' + type;
+            void el.offsetWidth;
+            el.classList.add('show');
+            _toastTimer = setTimeout(() => el.classList.remove('show'), duration);
+        }
+
+        function parseSize(str) {
+            if (!str || str.trim() === '') return 0;
+            str = str.trim().toUpperCase();
+            const match = str.match(/^([\d.]+)\s*([KMGTP]?B?)$/);
+            if (!match) return 0;
+            let num = parseFloat(match[1]);
+            let unit = match[2] || '';
+            if (isNaN(num) || num < 0) return 0;
+            if (unit === 'KB' || unit === 'K') return num * 1024;
+            if (unit === 'MB' || unit === 'M') return num * 1024 * 1024;
+            if (unit === 'GB' || unit === 'G') return num * 1024 * 1024 * 1024;
+            if (unit === 'TB' || unit === 'T') return num * 1024 * 1024 * 1024 * 1024;
+            if (unit === 'PB' || unit === 'P') return num * 1024 * 1024 * 1024 * 1024 * 1024;
+            return num;
+        }
+
+        function parseLine(line) {
+            line = line.trim();
+            if (!line) return null;
+            const match = line.match(/([\d.]+)\s*([KMGTP]?B?)\s*$/i);
+            if (match) {
+                const numStr = match[1];
+                let unit = (match[2] || '').toUpperCase();
+                if (unit) {
+                    const size = parseSize(numStr + unit);
+                    if (!isNaN(size) && size >= 0) {
+                        const name = line.substring(0, match.index).trim();
+                        return { name: name || line, size: size };
+                    }
+                }
+            }
+            return { name: line, size: 0 };
+        }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            const size = bytes / Math.pow(1024, i);
+            return size.toFixed(2) + ' ' + units[i];
+        }
+
+        function formatDate(timestamp) {
+            if (!timestamp) return '';
+            const d = new Date(timestamp);
+            return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2,
+                '0');
+        }
+
+        // ============================================================
+        //  更多菜单
+        // ============================================================
+        function toggleMoreMenu() {
+            document.getElementById('moreMenu').classList.toggle('visible');
+            document.getElementById('sortMenu').classList.remove('visible');
+        }
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.more-menu') && !e.target.closest('#moreMenuBtn')) {
+                document.getElementById('moreMenu').classList.remove('visible');
+            }
+        });
+
+        // ============================================================
+        //  排序
+        // ============================================================
+        function changeSort(key) {
+            data.sortKey = key;
+            saveState();
+            updateSortMenu();
+            renderCurrentTree();
+            document.getElementById('sortMenu').classList.remove('visible');
+        }
+
+        function updateSortMenu() {
+            document.querySelectorAll('.sort-menu .sort-item').forEach(item => {
+                const key = item.dataset.sort;
+                item.classList.toggle('active', key === data.sortKey);
+                item.querySelector('.check').textContent = key === data.sortKey ? '✓' : '';
+            });
+            document.getElementById('sortLabel').textContent = SORT_LABELS[data.sortKey] || '名称 (A→Z)';
+        }
+
+        function toggleSortMenu() {
+            const menu = document.getElementById('sortMenu');
+            menu.classList.toggle('visible');
+            document.getElementById('moreMenu').classList.remove('visible');
+        }
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('sortMenu');
+            if (!e.target.closest('.sort-menu') && !e.target.closest('[onclick*="toggleSortMenu"]') && !e.target
+                .closest('.more-menu')) {
+                menu.classList.remove('visible');
+            }
+        });
+
+        // ============================================================
+        //  导航
+        // ============================================================
+        function getCurrentDir(treeId) {
+            const tree = data.trees[treeId];
+            if (!tree) return null;
+            return tree.currentDir || null;
+        }
+
+        function setCurrentDir(treeId, nodeId) {
+            const tree = data.trees[treeId];
+            if (!tree) return;
+            tree.currentDir = nodeId || null;
+            saveState();
+            updateBackBtn();
+            updateTitlePath();
+        }
+
+        function getCurrentDirChildren(treeId) {
+            const dirId = getCurrentDir(treeId);
+            const tree = data.trees[treeId];
+            if (!tree) return [];
+            if (!dirId) return tree.nodes || [];
+            const node = getNode(treeId, dirId);
+            if (!node || node.type !== 'folder') return [];
+            return node.children || [];
+        }
+
+        function getCurrentDirPath(treeId) {
+            const dirId = getCurrentDir(treeId);
+            if (!dirId) return [];
+            const path = getNodePath(treeId, dirId);
+            return path || [];
+        }
+
+        function updateBackBtn() {
+            const hasNavStack = _navStack.length > 0;
+            const dirId = getCurrentDir(data.currentTreeId);
+            document.getElementById('backBtn').disabled = !(hasNavStack || dirId);
+            document.getElementById('backBtn').textContent = hasNavStack ? '↩️' : '←';
+        }
+
+        function updateTitlePath() {
+            const treeId = data.currentTreeId;
+            const tree = data.trees[treeId];
+            const path = getCurrentDirPath(treeId);
+            document.getElementById('mainTitle').textContent = tree.label;
+            document.getElementById('subPath').textContent = path.length === 0 ? '根目录' : path.map(n => n.name).join(' / ');
+        }
+
+        function goBack() {
+            if (_navStack.length > 0) {
+                navigateBackToOriginal();
+                return;
+            }
+            const treeId = data.currentTreeId;
+            const dirId = getCurrentDir(treeId);
+            if (!dirId) { showToast('已在根目录', 'info'); return; }
+            const path = getNodePath(treeId, dirId);
+            if (path.length <= 1) setCurrentDir(treeId, null);
+            else setCurrentDir(treeId, path[path.length - 2].id);
+            if (data.multiMode && !data.movingMode) exitMultiSelect();
+            renderCurrentTree();
+        }
+
+        function toggleSearch() {
+            _searchVisible = !_searchVisible;
+            document.getElementById('searchWrap').style.display = _searchVisible ? 'block' : 'none';
+            if (_searchVisible) document.getElementById('searchInput').focus();
+            else { document.getElementById('searchInput').value = '';
+                renderCurrentTree(); }
+        }
+
+        // ============================================================
+        //  渲染
+        // ============================================================
+        function searchAllNodes(treeId, keyword) {
+            const tree = data.trees[treeId];
+            if (!tree) return [];
+            const results = [];
+            const walk = (nodes, path) => {
+                nodes.forEach(node => {
+                    if (node.name.toLowerCase().includes(keyword)) {
+                        results.push({ ...node, path: path.concat(node.name) });
+                    }
+                    if (node.children && node.children.length > 0) {
+                        walk(node.children, path.concat(node.name));
+                    }
+                });
+            };
+            walk(tree.nodes, []);
+            return results;
+        }
+
+        function renderCurrentTree() {
+            const treeId = data.currentTreeId;
+            const tree = data.trees[treeId];
+            if (!tree) return;
+            const container = document.getElementById('treeContainer');
+            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+
+            TREE_IDS.forEach(id => {
+                const badge = document.getElementById('badge-' + id);
+                if (badge) badge.textContent = countNodes(data.trees[id].nodes);
+            });
+
+            let items = [];
+            let searchMode = false;
+
+            if (keyword) {
+                searchMode = true;
+                const matches = searchAllNodes(treeId, keyword);
+                matches.sort((a, b) => a.name.localeCompare(b.name));
+                items = matches;
+                document.getElementById('countText').textContent = `🔍 找到 ${items.length} 项 (全局搜索)`;
+            } else {
+                let children = getCurrentDirChildren(treeId);
+                const sortFn = SORT_FUNCS[data.sortKey] || SORT_FUNCS['name-asc'];
+                children = children.slice().sort(sortFn);
+                items = children;
+                document.getElementById('countText').textContent = `共 ${items.length} 项`;
+            }
+
+            container.classList.toggle('multi-select-mode', data.multiMode);
+            document.getElementById('multiModeHint').style.display = (data.multiMode && !data.movingMode) ? 'inline-block' :
+                'none';
+            const moveHint = document.getElementById('moveModeHint');
+            if (data.movingMode) {
+                moveHint.style.display = 'inline-block';
+                const path = getCurrentDirPath(treeId);
+                moveHint.innerHTML =
+                    `📦 移动模式 · 当前目标：<strong>${path.length > 0 ? path.map(n => n.name).join(' › ') : '根目录'}</strong>`;
+            } else moveHint.style.display = 'none';
+
+            function renderItems(nodes) {
+                if (!nodes || nodes.length === 0) {
+                    return `<div class="empty-state"><div class="big-icon">${keyword ? '🔍' : '📭'}</div><div class="hint">${keyword ? '没有匹配的项目' : '此目录为空'}</div></div>`;
+                }
+                let html = '';
+                nodes.forEach(node => {
+                    const linked = isNodeLinked(treeId, node.id);
+                    const isFolder = node.type === 'folder';
+                    const isSelected = data.selectedNodes.some(s => s.treeId === treeId && s.nodeId === node.id);
+                    let displayName = node.name;
+                    if (keyword && node.name.toLowerCase().includes(keyword)) {
+                        const idx = node.name.toLowerCase().indexOf(keyword);
+                        displayName = node.name.substring(0, idx) +
+                            '<span class="highlight">' + node.name.substring(idx, idx + keyword.length) +
+                            '</span>' +
+                            node.name.substring(idx + keyword.length);
+                    }
+                    let metaText = '';
+                    if (searchMode) {
+                        const pathStr = node.path ? node.path.slice(0, -1).join(' › ') : '';
+                        metaText = (pathStr ? '📂 ' + pathStr : '根目录') + (isFolder ? ' 📁' : ' 📄');
+                        if (!isFolder) metaText += ' · ' + formatSize(node.size || 0);
+                    } else {
+                        if (isFolder) {
+                            metaText = (node.children ? node.children.length : 0) + ' 项';
+                            if (node.createTime) metaText = formatDate(node.createTime) + ' · ' + metaText;
+                        } else {
+                            metaText = formatDate(node.createTime || Date.now()) + ' · ' + formatSize(node.size || 0);
+                        }
+                    }
+                    let classes = 'node-wrapper';
+                    if (isSelected) classes += ' selected';
+                    if (linked) classes += ' linked';
+                    const dotChecked = isSelected ? '✓' : '';
+                    const dotClass = 'radio-dot ' + (isSelected ? 'checked' : '');
+                    const icon = isFolder ? '📁' : '🖼️';
+                    const dataAttrs = `data-tree="${treeId}" data-node="${node.id}"` + (searchMode ?
+                        ` data-path="${encodeURIComponent(JSON.stringify(node.path))}"` : '');
+                    html += `<li><div class="${classes}" ${dataAttrs}>
+                <span class="${dotClass}">${dotChecked}</span>
+                <span class="icon">${icon}</span>
+                <div class="info-col"><div class="name">${displayName}</div><div class="meta">${metaText}</div></div>
+                <span class="arrow">${isFolder ? '›' : ''}</span>
+            </div></li>`;
+                });
+                return html;
+            }
+
+            container.innerHTML = renderItems(items);
+
+            if (searchMode) {
+                container.querySelectorAll('.node-wrapper[data-path]').forEach(wrapper => {
+                    wrapper.addEventListener('click', function(e) {
+                        const nodeId = this.dataset.node;
+                        const treeId = this.dataset.tree;
+                        const pathStr = this.dataset.path;
+                        if (!pathStr) return;
+                        const path = JSON.parse(decodeURIComponent(pathStr));
+                        const parentPath = path.slice(0, -1);
+                        let currentDirId = null;
+                        let currentNodes = data.trees[treeId].nodes;
+                        for (let name of parentPath) {
+                            const found = currentNodes.find(n => n.name === name && n.type === 'folder');
+                            if (found) {
+                                currentDirId = found.id;
+                                currentNodes = found.children || [];
+                            } else {
+                                showToast('路径不存在', 'error');
+                                return;
+                            }
+                        }
+                        if (data.currentTreeId !== treeId) switchTree(treeId);
+                        setCurrentDir(treeId, currentDirId);
+                        document.getElementById('searchInput').value = '';
+                        _searchVisible = false;
+                        document.getElementById('searchWrap').style.display = 'none';
+                        renderCurrentTree();
+                        setTimeout(() => {
+                            const targetWrapper = document.querySelector(
+                                `.node-wrapper[data-tree="${treeId}"][data-node="${nodeId}"]`);
+                            if (targetWrapper) {
+                                targetWrapper.classList.add('highlight-target');
+                                targetWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                setTimeout(() => targetWrapper.classList.remove('highlight-target'), 3000);
+                            }
+                        }, 100);
+                        showToast('📍 定位到 ' + (path.join(' › ')), 'info', 1500);
+                    });
+                });
+            }
+
+            updateBottomMenu();
+        }
+
+        // ============================================================
+        //  事件
+        // ============================================================
+        let _longPressTimer = null;
+        let _longPressTriggered = false;
+        let _touchStartX = 0,
+            _touchStartY = 0;
+        let _touchNode = null;
+
+        function initEvents() {
+            const container = document.getElementById('treeContainer');
+
+            container.addEventListener('touchstart', function(e) {
+                const wrapper = e.target.closest('.node-wrapper');
+                if (!wrapper) { closeContextMenu(); return; }
+                const touch = e.touches[0];
+                _touchStartX = touch.clientX;
+                _touchStartY = touch.clientY;
+                _touchNode = wrapper;
+                _longPressTriggered = false;
+                if (_longPressTimer) clearTimeout(_longPressTimer);
+                _longPressTimer = setTimeout(() => {
+                    if (!_touchNode) return;
+                    const dx = touch.clientX - _touchStartX;
+                    const dy = touch.clientY - _touchStartY;
+                    if (Math.abs(dx) > 15 || Math.abs(dy) > 15) return;
+                    _longPressTriggered = true;
+                    const treeId = _touchNode.dataset.tree;
+                    const nodeId = _touchNode.dataset.node;
+                    if (treeId && nodeId) {
+                        if (data.multiMode || data.movingMode) { showToast('当前模式下不支持此操作', 'info',
+                            600); return; }
+                        const node = getNode(treeId, nodeId);
+                        if (!node) { showToast('节点数据异常', 'error'); return; }
+                        if (navigator.vibrate) navigator.vibrate(20);
+                        showContextMenu(e.touches[0].clientX, e.touches[0].clientY, treeId, nodeId, node);
+                    }
+                    _touchNode = null;
+                }, 600);
+            }, { passive: true });
+
+            container.addEventListener('touchmove', function(e) {
+                if (!_touchNode) return;
+                if (e.touches.length !== 1) return;
+                const touch = e.touches[0];
+                const dx = touch.clientX - _touchStartX;
+                const dy = touch.clientY - _touchStartY;
+                if (Math.abs(dx) > 20 || Math.abs(dy) > 20) {
+                    if (_longPressTimer) { clearTimeout(_longPressTimer);
+                        _longPressTimer = null; }
+                    _touchNode = null;
+                }
+                if (dx < -50 && Math.abs(dy) < 30 && !_longPressTriggered) {
+                    e.preventDefault();
+                    if (_longPressTimer) { clearTimeout(_longPressTimer);
+                        _longPressTimer = null; }
+                    const treeId = _touchNode.dataset.tree;
+                    const nodeId = _touchNode.dataset.node;
+                    const node = getNode(treeId, nodeId);
+                    if (node && !data.movingMode) {
+                        if (!data.multiMode) enterMultiSelect();
+                        toggleSelectOnly(treeId, nodeId);
+                        if (navigator.vibrate) navigator.vibrate(15);
+                        showToast('左滑选中: ' + node.name, 'info', 600);
+                    }
+                    _touchNode = null;
+                    _longPressTriggered = true;
+                }
+            }, { passive: false });
+
+            container.addEventListener('touchend', function(e) {
+                if (_longPressTimer) { clearTimeout(_longPressTimer);
+                    _longPressTimer = null; }
+                if (_longPressTriggered) { _touchNode = null; return; }
+                if (_touchNode) {
+                    const treeId = _touchNode.dataset.tree;
+                    const nodeId = _touchNode.dataset.node;
+                    const node = getNode(treeId, nodeId);
+                    if (node) handleNodeClick(treeId, nodeId, node);
+                    _touchNode = null;
+                }
+                _longPressTriggered = false;
+            }, { passive: true });
+
+            container.addEventListener('contextmenu', function(e) {
+                const wrapper = e.target.closest('.node-wrapper');
+                if (!wrapper) { closeContextMenu(); return; }
+                e.preventDefault();
+                const treeId = wrapper.dataset.tree;
+                const nodeId = wrapper.dataset.node;
+                if (data.multiMode || data.movingMode) { showToast('当前模式下不支持此操作', 'info', 600); return; }
+                const node = getNode(treeId, nodeId);
+                if (!node) { showToast('节点数据异常', 'error'); return; }
+                showContextMenu(e.clientX, e.clientY, treeId, nodeId, node);
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('.context-menu')) closeContextMenu();
+            });
+
+            document.querySelectorAll('.bottom-tabs .tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    if (data.movingMode) { showToast('请先完成移动操作', 'info'); return; }
+                    if (data.multiMode) exitMultiSelect();
+                    switchTree(this.dataset.tree);
+                });
+            });
+
+            document.getElementById('modalOverlay').addEventListener('click', function(e) { if (e.target === this)
+                    closeModal(); });
+            document.getElementById('mapWizardOverlay').addEventListener('click', function(e) { if (e.target === this)
+                    closeMapWizard(); });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    if (document.getElementById('mapWizardOverlay').classList.contains('visible'))
+                        closeMapWizard();
+                    else if (document.getElementById('modalOverlay').classList.contains('visible'))
+                        closeModal();
+                    else if (data.movingMode) exitMoveMode();
+                    else if (data.multiMode) exitMultiSelect();
+                    else closeContextMenu();
+                }
+            });
+        }
+
+        // ============================================================
+        //  节点点击
+        // ============================================================
+        function handleNodeClick(treeId, nodeId, node) {
+            if (data.movingMode) {
+                if (node.type === 'folder') { setCurrentDir(treeId, nodeId);
+                    renderCurrentTree();
+                    showToast('📂 进入 ' + node.name, 'info', 600); } else showToast('移动模式下只能选择文件夹', 'info',
+                    800);
+                return;
+            }
+            if (data.multiMode) { toggleSelectOnly(treeId, nodeId); return; }
+            if (node.type === 'folder') { setCurrentDir(treeId, nodeId);
+                renderCurrentTree();
+                showToast('📂 进入 ' + node.name, 'info', 1000); } else showToast('📄 ' + node.name, 'info', 1200);
+        }
+
+        // ============================================================
+        //  多选
+        // ============================================================
+        function enterMultiSelect() {
+            if (data.multiMode || data.movingMode) return;
+            data.multiMode = true;
+            data.selectedNodes = [];
+            renderCurrentTree();
+            document.getElementById('bottomMenu').classList.add('visible');
+            showToast('📌 多选模式已开启', 'info', 1500);
+        }
+
+        function toggleSelectOnly(treeId, nodeId) {
+            if (data.movingMode) return;
+            const idx = data.selectedNodes.findIndex(s => s.treeId === treeId && s.nodeId === nodeId);
+            if (idx > -1) { data.selectedNodes.splice(idx, 1);
+                renderCurrentTree(); return; }
+            data.selectedNodes.push({ treeId, nodeId });
+            renderCurrentTree();
+        }
+
+        function exitMultiSelect() {
+            if (data.movingMode) return;
+            data.multiMode = false;
+            data.selectedNodes = [];
+            document.getElementById('bottomMenu').classList.remove('visible');
+            document.getElementById('multiSelectBtn').style.color = '#94a3b8';
+            document.getElementById('multiSelectBtn').textContent = '☑️';
+            renderCurrentTree();
+            showToast('已退出多选模式', 'info', 1000);
+        }
+
+        function batchDelete() {
+            if (data.selectedNodes.length === 0) return;
+            if (!confirm('确定删除选中的 ' + data.selectedNodes.length + ' 个项目吗？')) return;
+            const grouped = {};
+            data.selectedNodes.forEach(s => {
+                if (!grouped[s.treeId]) grouped[s.treeId] = [];
+                grouped[s.treeId].push(s.nodeId);
+            });
+            let total = 0;
+            for (const [treeId, nodeIds] of Object.entries(grouped)) {
+                const tree = data.trees[treeId];
+                const removeNodes = (nodes) => {
+                    for (let i = nodes.length - 1; i >= 0; i--) {
+                        const node = nodes[i];
+                        if (nodeIds.includes(node.id)) {
+                            const allIds = getAllDescendantIds(node);
+                            removeLinksByNodeIds(allIds);
+                            if (tree.currentDir === node.id) tree.currentDir = null;
+                            nodes.splice(i, 1);
+                            total++;
+                        } else if (node.children) removeNodes(node.children);
+                    }
+                };
+                removeNodes(tree.nodes);
+            }
+            data.selectedNodes = [];
+            data.multiMode = false;
+            document.getElementById('bottomMenu').classList.remove('visible');
+            saveState();
+            renderCurrentTree();
+            showToast('✅ 已删除 ' + total + ' 个项目', 'success');
+        }
+
+        // ============================================================
+        //  移动
+        // ============================================================
+        function enterMoveMode() {
+            if (data.selectedNodes.length === 0) { showToast('请先选择要移动的项目', 'error'); return; }
+            const treeId = data.selectedNodes[0].treeId;
+            const allSame = data.selectedNodes.every(s => s.treeId === treeId);
+            if (!allSame) { showToast('只能移动同一盘内的项目', 'error'); return; }
+            data.movingMode = true;
+            data._moveSelection = data.selectedNodes.map(s => ({ ...s }));
+            setCurrentDir(treeId, null);
+            renderCurrentTree();
+            document.getElementById('bottomMenu').classList.add('visible');
+            showToast('📦 导航到目标目录，点击确认移动', 'info', 2000);
+        }
+
+        function exitMoveMode() {
+            data.movingMode = false;
+            data._moveSelection = null;
+            data.multiMode = false;
+            data.selectedNodes = [];
+            document.getElementById('bottomMenu').classList.remove('visible');
+            renderCurrentTree();
+            showToast('已取消移动', 'info', 1000);
+        }
+
+        function confirmMove() {
+            if (!data.movingMode) return;
+            const treeId = data.currentTreeId;
+            const selection = data._moveSelection;
+            if (!selection || selection.length === 0) { showToast('没有要移动的项目', 'error'); return; }
+            const targetDirId = getCurrentDir(treeId);
+            const selectedNodeIds = selection.map(s => s.nodeId);
+            let targetNode = null;
+            if (targetDirId) {
+                targetNode = getNode(treeId, targetDirId);
+                if (!targetNode || targetNode.type !== 'folder') { showToast('目标不是有效的文件夹', 'error'); return; }
+                if (selectedNodeIds.includes(targetNode.id)) { showToast('不能移动到自身', 'error'); return; }
+            }
+            const tree = data.trees[treeId];
+            const movedItems = [];
+            const removeFromTree = (nodes) => {
+                for (let i = nodes.length - 1; i >= 0; i--) {
+                    const node = nodes[i];
+                    if (selectedNodeIds.includes(node.id)) movedItems.push(nodes.splice(i, 1)[0]);
+                    else if (node.children) removeFromTree(node.children);
+                }
+            };
+            removeFromTree(tree.nodes);
+            if (movedItems.length === 0) { showToast('未找到要移动的项目', 'error'); return; }
+            if (targetNode) { if (!targetNode.children) targetNode.children = [];
+                targetNode.children.push(...movedItems); } else tree.nodes.push(...movedItems);
+            if (tree.currentDir && selectedNodeIds.includes(tree.currentDir)) tree.currentDir = null;
+            data.movingMode = false;
+            data.multiMode = false;
+            data.selectedNodes = [];
+            data._moveSelection = null;
+            document.getElementById('bottomMenu').classList.remove('visible');
+            saveState();
+            renderCurrentTree();
+            showToast('✅ 成功移动 ' + movedItems.length + ' 个项目', 'success');
+        }
+
+        // ============================================================
+        //  底部菜单
+        // ============================================================
+        function updateBottomMenu() {
+            const menu = document.getElementById('bottomMenu');
+            const info = document.getElementById('menuInfo');
+            const actions = document.getElementById('menuActions');
+            if (data.movingMode) {
+                menu.classList.add('visible');
+                info.innerHTML = '<strong>移动模式</strong>';
+                actions.innerHTML =
+                    '<button class="primary" onclick="confirmMove()">✅ 确认移动</button><button onclick="exitMoveMode()" style="background:#334155;">✕ 取消</button>';
+                return;
+            }
+            if (!data.multiMode || data.selectedNodes.length === 0) { menu.classList.remove('visible'); return; }
+            menu.classList.add('visible');
+            const count = data.selectedNodes.length;
+            info.innerHTML = '<strong>已选 ' + count + ' 项</strong>';
+            const trees = new Set(data.selectedNodes.map(s => s.treeId));
+            const allSame = trees.size === 1;
+            const canRename = count === 1;
+            const canMove = allSame;
+            let html = '';
+            if (canRename) html += '<button class="warn" onclick="openRenameModal()">✏️ 重命名</button>';
+            if (canMove) html += '<button class="primary" onclick="enterMoveMode()">📦 移动</button>';
+            html += '<button class="danger" onclick="batchDelete()">🗑️ 删除</button>';
+            html += '<button onclick="exitMultiSelect()" style="background:#334155;">✕ 取消</button>';
+            actions.innerHTML = html;
+        }
+
+        // ============================================================
+        //  多选按钮
+        // ============================================================
+        function toggleMultiSelectMode() {
+            if (data.movingMode) { showToast('请先完成移动操作', 'info'); return; }
+            if (data.multiMode) {
+                exitMultiSelect();
+                document.getElementById('multiSelectBtn').style.color = '#94a3b8';
+                document.getElementById('multiSelectBtn').textContent = '☑️';
+                showToast('已退出多选模式', 'info', 1000);
+            } else {
+                enterMultiSelect();
+                document.getElementById('multiSelectBtn').style.color = '#3b82f6';
+                document.getElementById('multiSelectBtn').textContent = '✅';
+                showToast('多选模式已开启，点击文件选择', 'info', 1500);
+            }
+        }
+
+        // ============================================================
+        //  重命名 / 添加
+        // ============================================================
+        function openRenameModal() {
+            if (data.selectedNodes.length !== 1) return;
+            const sel = data.selectedNodes[0];
+            const node = getNode(sel.treeId, sel.nodeId);
+            if (!node) return;
+            document.getElementById('modalTitle').textContent = '✏️ 重命名';
+            document.getElementById('singleNameField').style.display = 'block';
+            document.getElementById('batchField').style.display = 'none';
+            document.getElementById('batchModeCheck').checked = false;
+            document.getElementById('modalNameInput').value = node.name;
+            document.getElementById('sizeField').style.display = 'none';
+            document.getElementById('typeToggle').style.display = 'none';
+            document.querySelector('.batch-toggle').style.display = 'none';
+            document.getElementById('modalLocation').textContent = '📍 位置：' + data.trees[sel.treeId].label;
+            document.getElementById('modalConfirmBtn').onclick = function() {
+                const newName = document.getElementById('modalNameInput').value.trim();
+                if (!newName) { showToast('名称不能为空', 'error'); return; }
+                node.name = newName;
+                saveState();
+                renderCurrentTree();
+                closeModal();
+                exitMultiSelect();
+                showToast('✅ 已重命名', 'success');
+            };
+            document.getElementById('modalOverlay').classList.add('visible');
+            setTimeout(() => document.getElementById('modalNameInput').focus(), 100);
+        }
+        let currentType = 'folder';
+
+        function setType(type) {
+            currentType = type;
+            document.getElementById('typeFolder').classList.toggle('active', type === 'folder');
+            document.getElementById('typeFile').classList.toggle('active', type === 'file');
+            updateSizeFieldVisibility();
+        }
+
+        function toggleBatchMode() {
+            const checked = document.getElementById('batchModeCheck').checked;
+            document.getElementById('singleNameField').style.display = checked ? 'none' : 'block';
+            document.getElementById('batchField').style.display = checked ? 'block' : 'none';
+            updateSizeFieldVisibility();
+        }
+
+        function updateSizeFieldVisibility() {
+            const batchMode = document.getElementById('batchModeCheck').checked;
+            const isFile = currentType === 'file';
+            document.getElementById('sizeField').style.display = (isFile && !batchMode) ? 'block' : 'none';
+        }
+
+        function openAddModal() {
+            const treeId = data.currentTreeId;
+            const parentId = getCurrentDir(treeId);
+            _addTargetParentId = parentId;
+            let locationText = '📍 位置：根目录';
+            if (parentId) {
+                const parentNode = getNode(treeId, parentId);
+                if (parentNode) locationText = '📍 位置：📁 ' + parentNode.name;
+            }
+            document.getElementById('modalLocation').textContent = locationText;
+            document.getElementById('modalTitle').textContent = '➕ 添加新项目';
+            document.getElementById('singleNameField').style.display = 'block';
+            document.getElementById('batchField').style.display = 'none';
+            document.getElementById('batchModeCheck').checked = false;
+            document.getElementById('modalNameInput').value = '';
+            document.getElementById('modalBatchInput').value = '';
+            document.getElementById('modalSizeInput').value = '';
+            document.getElementById('typeToggle').style.display = 'flex';
+            document.querySelector('.batch-toggle').style.display = 'flex';
+            setType('folder');
+            document.getElementById('sizeField').style.display = 'none';
+            document.getElementById('modalConfirmBtn').onclick = confirmAdd;
+            document.getElementById('modalOverlay').classList.add('visible');
+            setTimeout(() => document.getElementById('modalNameInput').focus(), 100);
+        }
+
+        function confirmAdd() {
+            const treeId = data.currentTreeId;
+            const parentId = _addTargetParentId;
+            const isBatch = document.getElementById('batchModeCheck').checked;
+            const type = currentType;
+            const addNode = (name, size) => {
+                const newNode = {
+                    id: 'n' + (data.nextId++),
+                    name,
+                    type,
+                    size: (type === 'file') ? (size !== undefined ? size : 0) : 0,
+                    createTime: Date.now(),
+                    children: type === 'folder' ? [] : undefined
+                };
+                if (parentId) {
+                    const parentNode = getNode(treeId, parentId);
+                    if (parentNode && parentNode.type === 'folder') {
+                        if (!parentNode.children) parentNode.children = [];
+                        parentNode.children.push(newNode);
+                    } else data.trees[treeId].nodes.push(newNode);
+                } else data.trees[treeId].nodes.push(newNode);
+                return newNode;
+            };
+            if (isBatch) {
+                const text = document.getElementById('modalBatchInput').value;
+                const lines = text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                if (lines.length === 0) { showToast('请输入至少一个名称', 'error'); return; }
+                let added = 0;
+                lines.forEach(line => {
+                    const parsed = parseLine(line);
+                    if (parsed) {
+                        let size = parsed.size;
+                        if (type === 'folder') size = 0;
+                        addNode(parsed.name, size);
+                        added++;
+                    }
+                });
+                saveState();
+                renderCurrentTree();
+                closeModal();
+                showToast('✅ 成功添加 ' + added + ' 个项目', 'success');
+            } else {
+                const name = document.getElementById('modalNameInput').value.trim();
+                if (!name) { showToast('请输入名称', 'error'); return; }
+                let size = 0;
+                const sizeVal = document.getElementById('modalSizeInput').value.trim();
+                if (sizeVal !== '') {
+                    size = parseSize(sizeVal);
+                    if (isNaN(size) || size < 0) size = 0;
+                }
+                if (type === 'folder') size = 0;
+                addNode(name, size);
+                saveState();
+                renderCurrentTree();
+                closeModal();
+                showToast('✅ 添加成功', 'success');
+            }
+            _addTargetParentId = null;
+        }
+
+        function closeModal() {
+            _addTargetParentId = null;
+            document.getElementById('modalOverlay').classList.remove('visible');
+        }
+
+        // ============================================================
+        //  上下文菜单
+        // ============================================================
+        function showContextMenu(x, y, treeId, nodeId, node) {
+            const menu = document.getElementById('contextMenu');
+            contextTarget.treeId = treeId;
+            contextTarget.nodeId = nodeId;
+            contextTarget.node = node;
+            const jumpItem = document.getElementById('menuJumpToLink');
+            jumpItem.style.display = isNodeLinked(treeId, nodeId) ? 'flex' : 'none';
+            const w = 200,
+                h = 100;
+            let left = Math.min(x, window.innerWidth - w - 8);
+            let top = Math.min(y, window.innerHeight - h - 8);
+            left = Math.max(8, left);
+            top = Math.max(8, top);
+            menu.style.left = left + 'px';
+            menu.style.top = top + 'px';
+            menu.classList.add('visible');
+        }
+
+        function closeContextMenu() {
+            document.getElementById('contextMenu').classList.remove('visible');
+            contextTarget.treeId = null;
+            contextTarget.nodeId = null;
+            contextTarget.node = null;
+        }
+
+        function handleContextCopyPath() {
+            const savedTreeId = contextTarget.treeId;
+            const savedNodeId = contextTarget.nodeId;
+            const savedNode = contextTarget.node;
+            closeContextMenu();
+            if (!savedNode && savedTreeId && savedNodeId) {
+                const node = getNode(savedTreeId, savedNodeId);
+                if (!node) { showToast('节点不存在', 'error'); return; }
+                const fullPath = getFullPath(savedTreeId, savedNodeId);
+                if (fullPath) {
+                    navigator.clipboard.writeText(fullPath).then(() => showToast('✅ 已复制路径: ' + fullPath,
+                        'success'))
+                        .catch(() => {
+                            const ta = document.createElement('textarea');
+                            ta.value = fullPath;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            ta.remove();
+                            showToast('✅ 已复制路径: ' + fullPath, 'success');
+                        });
+                } else showToast('无法获取路径', 'error');
+                return;
+            }
+            if (savedNode) {
+                const fullPath = getFullPath(savedTreeId, savedNodeId);
+                if (fullPath) {
+                    navigator.clipboard.writeText(fullPath).then(() => showToast('✅ 已复制路径: ' + fullPath,
+                        'success'))
+                        .catch(() => {
+                            const ta = document.createElement('textarea');
+                            ta.value = fullPath;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            ta.remove();
+                            showToast('✅ 已复制路径: ' + fullPath, 'success');
+                        });
+                } else showToast('无法获取路径', 'error');
+            } else showToast('无效节点', 'error');
+        }
+
+        function handleContextCopyName() {
+            const savedNode = contextTarget.node;
+            const savedTreeId = contextTarget.treeId;
+            const savedNodeId = contextTarget.nodeId;
+            closeContextMenu();
+
+            let node = savedNode;
+            if (!node && savedTreeId && savedNodeId) {
+                node = getNode(savedTreeId, savedNodeId);
+            }
+            if (!node) {
+                showToast('节点不存在', 'error');
+                return;
+            }
+
+            const name = node.name;
+            if (!name) {
+                showToast('无法获取文件名', 'error');
+                return;
+            }
+
+            navigator.clipboard.writeText(name)
+                .then(() => showToast('✅ 已复制文件名: ' + name, 'success'))
+                .catch(() => {
+                    const ta = document.createElement('textarea');
+                    ta.value = name;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                    showToast('✅ 已复制文件名: ' + name, 'success');
+                });
+        }
+
+        function handleContextJumpToLink() {
+            const savedTreeId = contextTarget.treeId;
+            const savedNodeId = contextTarget.nodeId;
+            closeContextMenu();
+            if (!savedTreeId || !savedNodeId) { showToast('无效节点', 'error'); return; }
+            const links = findLinkedPairs(savedNodeId, savedTreeId);
+            if (links.length === 0) { showToast('该文件没有映射关系', 'error'); return; }
+            const link = links[0];
+            const otherTreeId = link.otherTree;
+            const otherNodeId = link.otherNode;
+            const targetNode = getNode(otherTreeId, otherNodeId);
+            if (!targetNode) { showToast('目标节点不存在', 'error'); return; }
+            const targetPath = getNodePath(otherTreeId, otherNodeId);
+            if (!targetPath || targetPath.length < 1) { showToast('无法获取目标路径', 'error'); return; }
+            let targetDirId = null;
+            if (targetNode.type === 'file' && targetPath.length >= 2) targetDirId = targetPath[targetPath.length - 2].id;
+            else if (targetNode.type === 'folder') targetDirId = targetNode.id;
+            else targetDirId = null;
+            _navStack.push({ treeId: data.currentTreeId, dirId: getCurrentDir(data.currentTreeId), nodeId: savedNodeId });
+            switchTree(otherTreeId);
+            setCurrentDir(otherTreeId, targetDirId);
+            renderCurrentTree();
+            setTimeout(() => {
+                const wrapper = document.querySelector(
+                    `.node-wrapper[data-tree="${otherTreeId}"][data-node="${otherNodeId}"]`);
+                if (wrapper) { wrapper.classList.add('highlight-target');
+                    wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setTimeout(() => wrapper.classList.remove('highlight-target'), 3000); }
+            }, 100);
+            showToast('🔗 已跳转到 ' + targetNode.name, 'info', 1500);
+            updateBackBtn();
+        }
+
+        function navigateBackToOriginal() {
+            if (_navStack.length === 0) { showToast('没有可返回的位置', 'info'); return; }
+            const state = _navStack.pop();
+            if (data.currentTreeId !== state.treeId) switchTree(state.treeId);
+            setCurrentDir(state.treeId, state.dirId);
+            renderCurrentTree();
+            setTimeout(() => {
+                const wrapper = document.querySelector(
+                    `.node-wrapper[data-tree="${state.treeId}"][data-node="${state.nodeId}"]`);
+                if (wrapper) { wrapper.classList.add('highlight-target');
+                    wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setTimeout(() => wrapper.classList.remove('highlight-target'), 3000); }
+            }, 100);
+            showToast('↩️ 已返回', 'info', 1000);
+            updateBackBtn();
+        }
+
+        // ============================================================
+        //  盘切换
+        // ============================================================
+        function switchTree(treeId) {
+            if (!data.trees[treeId]) return;
+            data.currentTreeId = treeId;
+            data.selectedNodes = [];
+            data.multiMode = false;
+            data.movingMode = false;
+            data._moveSelection = null;
+            document.getElementById('bottomMenu').classList.remove('visible');
+            document.getElementById('multiSelectBtn').style.color = '#94a3b8';
+            document.getElementById('multiSelectBtn').textContent = '☑️';
+            setCurrentDir(treeId, null);
+            updateTabs();
+            renderCurrentTree();
+            updateBackBtn();
+            updateTitlePath();
+            saveState();
+        }
+
+        function updateTabs() {
+            document.querySelectorAll('.bottom-tabs .tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tree === data.currentTreeId);
+            });
+        }
+
+        // ============================================================
+        //  映射向导（完整实现）
+        // ============================================================
+        function openMapWizard() {
+            wizardState.step = 0;
+            wizardState.mode = null;
+            wizardState.targetDisk = null;
+            wizardState.localDirId = getCurrentDir('local');
+            wizardState.targetDirId = null;
+            wizardState.localSelected = [];
+            wizardState.targetSelected = [];
+            wizardState.pairs = [];
+            wizardState.swapSource = null;
+            wizardState.configContent = null;
+            wizardState.uploadFiles = []; // 新增，存储 File 对象
+wizardState.uploadFileNames = []; // 仅存名字用于显示
+            wizardState.configParsed = null;
+            wizardState.uploadFileName = null;
+            wizardState.uploadFileNames = []; // 重置
+            const options = TREE_IDS.filter(id => id !== 'local');
+            wizardState.targetDisk = options.length > 0 ? options[0] : null;
+            if (wizardState.targetDisk) wizardState.targetDirId = getCurrentDir(wizardState.targetDisk);
+            renderWizardStep();
+            document.getElementById('mapWizardOverlay').classList.add('visible');
+        }
+
+        function closeMapWizard() {
+            document.getElementById('mapWizardOverlay').classList.remove('visible');
+            wizardState.mode = null;
+            wizardState.pairs = [];
+        }
+
+        function renderWizardStep() {
+            const step = wizardState.step;
+            const content = document.getElementById('mapWizardContent');
+            const nextBtn = document.getElementById('mapWizardNext');
+            const prevBtn = document.querySelector('.map-wizard .prev');
+            document.querySelectorAll('.step-indicator .step-dot').forEach(dot => { dot.classList.toggle('active',
+                    parseInt(dot.dataset.step) === step); });
+            document.getElementById('mapWizardTitle').textContent = step === 0 ? '🔗 建立映射' : (step === 5 ?
+                '📋 预览确认' : '🔗 映射 (' + step + '/5)');
+            prevBtn.style.display = step === 0 ? 'none' : 'block';
+            nextBtn.textContent = step === 5 ? '✅ 确认建立' : '下一步';
+            nextBtn.disabled = false;
+            let html = '';
+            switch (step) {
+                case 0:
+                    html = renderModeSelection();
+                    break;
+                case 1:
+                    html = renderDiskSelection();
+                    break;
+                case 2:
+                    html = renderFileSelection('local', '选择本地盘文件');
+                    break;
+                case 3:
+                    html = renderFileSelection('target', '选择映射盘文件');
+                    break;
+                case 4:
+                    html = renderPairConfig();
+                    break;
+                case 5:
+                    html = renderPreview();
+                    break;
+                default:
+                    html = '<div>未知步骤</div>';
+            }
+            content.innerHTML = html;
+            if (step === 0 && wizardState.mode) {
+                document.getElementById('mapWizardNext').disabled = false;
+            }
+        }
+
+        function renderModeSelection() {
+            const mode = wizardState.mode;
+            return `<div style="text-align:center;padding:12px 0;">
+            <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+                <div onclick="selectMode('manual')" style="background:#0f172a;border:2px solid ${mode === 'manual' ? '#3b82f6' : '#334155'};border-radius:14px;padding:16px 20px;cursor:pointer;min-width:110px;transition:0.2s;" id="modeManual">
+                    <div style="font-size:36px;">🖱️</div>
+                    <div style="margin-top:4px;font-weight:600;font-size:13px;">手动选择</div>
+                    <div style="font-size:10px;color:#94a3b8;">一步步挑选</div>
+                </div>
+                <div onclick="selectMode('upload')" style="background:#0f172a;border:2px solid ${mode === 'upload' ? '#3b82f6' : '#334155'};border-radius:14px;padding:16px 20px;cursor:pointer;min-width:110px;transition:0.2s;" id="modeUpload">
+                    <div style="font-size:36px;">📄</div>
+                    <div style="margin-top:4px;font-weight:600;font-size:13px;">上传配置</div>
+                    <div style="font-size:10px;color:#94a3b8;">导入映射文件</div>
+                </div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:#94a3b8;">选择一种方式开始建立映射</div>
+        </div>`;
+        }
+
+        function selectMode(mode) {
+            wizardState.mode = mode;
+            document.getElementById('modeManual').style.borderColor = mode === 'manual' ? '#3b82f6' : '#334155';
+            document.getElementById('modeUpload').style.borderColor = mode === 'upload' ? '#3b82f6' : '#334155';
+            document.getElementById('mapWizardNext').disabled = false;
+            if (mode === 'upload') {
+                wizardState.step = 1;
+                renderWizardStep();
+            }
+        }
+
+        function renderDiskSelection() {
+            if (wizardState.mode === 'upload') return renderUploadConfig();
+            const options = TREE_IDS.filter(id => id !== 'local');
+            let html = '<div><div style="font-weight:500;margin-bottom:4px;font-size:13px;">选择目标云盘</div><div class="disk-selector">';
+            options.forEach(id => {
+                const label = data.trees[id]?.label || id;
+                const active = wizardState.targetDisk === id ? 'active' : '';
+                html += `<div class="disk-option ${active}" onclick="selectTargetDisk('${id}')">${label}</div>`;
+            });
+            html +=
+                '</div><div class="hint-text">映射将建立在 <strong>本地盘</strong> 与所选云盘之间</div><div style="margin-top:4px;font-size:11px;color:#94a3b8;">💡 后续步骤将分别从本地盘和目标盘选择文件</div></div>';
+            return html;
+        }
+
+        function selectTargetDisk(id) {
+            wizardState.targetDisk = id;
+            wizardState.targetDirId = getCurrentDir(id);
+            document.querySelectorAll('.disk-option').forEach(el => { el.classList.toggle('active', el.textContent
+                    .includes(data.trees[id]?.label || id)); });
+            document.getElementById('mapWizardNext').disabled = false;
+        }
+
+        // === 修改点3：renderUploadConfig 支持多文件显示 ===
+function renderUploadConfig() {
+    const files = wizardState.uploadFiles || [];
+    const fileCount = files.length;
+    let fileDisplay = '';
+    if (fileCount > 0) {
+        const list = files.map((f, idx) => 
+            `<span style="display:inline-block;background:#1e3a8a;padding:0 6px;border-radius:4px;margin:1px 2px;font-size:10px;">${f.name}</span>`
+        ).join('');
+        fileDisplay = `<div class="file-names">已选 ${fileCount} 个文件：${list}</div>`;
+    }
+
+    return `<div>
+        <div style="font-weight:500;margin-bottom:4px;font-size:13px;">上传映射配置文件</div>
+        <div class="upload-area" onclick="document.getElementById('mapConfigFile').click()">
+            <div class="upload-icon">📤</div>
+            <div class="upload-hint">点击添加配置文件（每次选一个，可多次添加）</div>
+            ${fileDisplay}
+        </div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
+            格式：第一行 盘名1, 盘名2 &nbsp;|&nbsp; 第二行 路径1, 路径2 &nbsp;|&nbsp; 第三行起 文件1 ↔ 文件2
+        </div>
+        ${wizardState.configParsed ? '<div style="margin-top:6px;padding:4px 8px;background:#0f172a;border-radius:6px;font-size:12px;color:#86efac;">✅ 解析成功，共 '+wizardState.configParsed.mappings.length+' 对映射</div>' : ''}
+        <div style="margin-top:8px;display:flex;gap:6px;">
+            <button onclick="parseAllUploadedFiles()" style="flex:1;padding:6px;border:none;border-radius:30px;background:#3b82f6;color:white;font-weight:600;font-size:12px;cursor:pointer;">🔍 解析并继续</button>
+            <button onclick="clearUploadedFiles()" style="padding:6px 12px;border:none;border-radius:30px;background:#334155;color:#e2e8f0;font-size:12px;cursor:pointer;">清空</button>
+        </div>
+    </div>`;
+}
+
+        // === 修改点4：handleConfigFile 重写支持多文件 ===
+        async function handleConfigFile(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            // 重置状态
+            wizardState.uploadFileNames = [];
+            wizardState.configParsed = null;
+
+            let allMappings = [];
+            let baseDisk1 = null;
+            let baseDisk2 = null;
+            let baseLocalPath = null;
+            let baseCloudPath = null;
+            let firstFile = true;
+            let hasValidFile = false;
+            let errorCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                try {
+                    const text = await file.text();
+                    const lines = text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                    if (lines.length < 3) {
+                        showToast('文件 ' + file.name + ' 格式错误：至少需要3行', 'error');
+                        errorCount++;
+                        continue;
+                    }
+
+                    // 解析映射
+                    let mappings = [];
+                    for (let j = 2; j < lines.length; j++) {
+                        const line = lines[j];
+                        const mainParts = line.split('↔').map(s => s.trim());
+                        if (mainParts.length !== 2) continue;
+                        const left = mainParts[0];
+                        let right = mainParts[1];
+                        let size = 0;
+                        const pipeIdx = right.indexOf('|');
+                        if (pipeIdx !== -1) {
+                            const encPart = right.substring(0, pipeIdx).trim();
+                            const sizePart = right.substring(pipeIdx + 1).trim();
+                            size = parseInt(sizePart, 10);
+                            if (isNaN(size)) size = 0;
+                            right = encPart;
+                        }
+                        mappings.push({ from: left, to: right, size: size });
+                    }
+
+                    if (mappings.length === 0) {
+                        showToast('文件 ' + file.name + ' 未解析到有效的映射关系', 'warning');
+                        errorCount++;
+                        continue;
+                    }
+
+                    const line2 = lines[1];
+                    const pathParts = line2.split(',').map(s => s.trim());
+                    if (pathParts.length !== 2) {
+                        showToast('文件 ' + file.name + ' 第二行需要两个路径，用逗号分隔', 'error');
+                        errorCount++;
+                        continue;
+                    }
+
+                    let localPath = pathParts[0];
+                    const prefixToRemove = "/storage/emulated/0/ 我的文件/爱-加密仓库/加密文件";
+                    if (localPath.startsWith(prefixToRemove)) {
+                        localPath = localPath.substring(prefixToRemove.length);
+                        localPath = localPath.replace(/^\/+/, '');
+                    }
+                    if (localPath === '') localPath = '.';
+                    const cloudPath = pathParts[1];
+
+                    const diskParts = lines[0].split(',').map(s => s.trim());
+                    const disk1 = diskParts[0] || 'local';
+                    const disk2 = diskParts[1] || 'cloudA';
+
+                    if (firstFile) {
+                        baseDisk1 = disk1;
+                        baseDisk2 = disk2;
+                        baseLocalPath = localPath;
+                        baseCloudPath = cloudPath;
+                        firstFile = false;
+                    } else {
+                        if (disk1 !== baseDisk1 || disk2 !== baseDisk2 ||
+                            localPath !== baseLocalPath || cloudPath !== baseCloudPath) {
+                            showToast('⚠️ 文件 ' + file.name + ' 的盘名或路径与第一个文件不一致，将忽略其盘名和路径', 'info');
+                        }
+                    }
+
+                    allMappings = allMappings.concat(mappings);
+                    wizardState.uploadFileNames.push(file.name);
+                    hasValidFile = true;
+
+                } catch (err) {
+                    showToast('解析文件 ' + file.name + ' 失败: ' + err.message, 'error');
+                    errorCount++;
+                }
+            }
+
+            if (!hasValidFile || allMappings.length === 0 || baseDisk1 === null) {
+                if (errorCount === files.length) {
+                    showToast('❌ 所有文件解析失败，请检查格式', 'error');
+                } else {
+                    showToast('未解析到任何有效的映射关系', 'error');
+                }
+                renderWizardStep();
+                event.target.value = '';
+                return;
+            }
+
+            // 去重（基于 from→to）
+            const uniqueMappings = [];
+            const seen = new Set();
+            allMappings.forEach(m => {
+                const key = m.from + '|' + m.to;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    uniqueMappings.push(m);
+                }
+            });
+
+            const dupCount = allMappings.length - uniqueMappings.length;
+
+            // 应用配置
+            const localTreeId = 'local';
+            let cloudTreeId = 'cloudA';
+            if (baseDisk2.includes('光鸭') || baseDisk2.includes('光鸭盘')) {
+                cloudTreeId = 'cloudB';
+            }
+
+            const cleanPath = (p) => p.replace(/^\/+|\/+$/g, '').split('/').filter(s => s.length > 0);
+            const localDirs = cleanPath(baseLocalPath);
+            const cloudDirs = cleanPath(baseCloudPath);
+
+            // 内部辅助函数
+            function getOrCreateDir(treeId, dirs) {
+                let tree = data.trees[treeId];
+                if (!tree) return null;
+                let currentNodes = tree.nodes;
+                let currentNode = null;
+                for (let d of dirs) {
+                    let found = currentNodes.find(n => n.name === d && n.type === 'folder');
+                    if (!found) {
+                        const newDir = {
+                            id: 'n' + (data.nextId++),
+                            name: d,
+                            type: 'folder',
+                            size: 0,
+                            createTime: Date.now(),
+                            children: []
+                        };
+                        currentNodes.push(newDir);
+                        found = newDir;
+                    }
+                    currentNodes = found.children;
+                    currentNode = found;
+                }
+                return currentNode;
+            }
+
+            function getOrCreateFile(treeId, parentDirNode, fileName, fileSize) {
+                let tree = data.trees[treeId];
+                if (!tree) return null;
+                let parent = parentDirNode || null;
+                let nodes = parent ? parent.children : tree.nodes;
+                let existing = nodes.find(n => n.name === fileName && n.type === 'file');
+                if (existing) {
+                    if (fileSize !== undefined && fileSize > 0) existing.size = fileSize;
+                    return existing;
+                }
+                const newFile = {
+                    id: 'n' + (data.nextId++),
+                    name: fileName,
+                    type: 'file',
+                    size: fileSize || 0,
+                    createTime: Date.now()
+                };
+                nodes.push(newFile);
+                return newFile;
+            }
+
+            let localParent = getOrCreateDir(localTreeId, localDirs);
+            let cloudParent = getOrCreateDir(cloudTreeId, cloudDirs);
+            let successCount = 0;
+            for (let m of uniqueMappings) {
+                const localFile = getOrCreateFile(localTreeId, localParent, m.from, m.size);
+                const cloudFile = getOrCreateFile(cloudTreeId, cloudParent, m.to, 0);
+                if (!localFile || !cloudFile) continue;
+                const exists = data.links.some(link =>
+                    (link.source.treeId === localTreeId && link.source.nodeId === localFile.id &&
+                        link.target.treeId === cloudTreeId && link.target.nodeId === cloudFile.id) ||
+                    (link.source.treeId === cloudTreeId && link.source.nodeId === cloudFile.id &&
+                        link.target.treeId === localTreeId && link.target.nodeId === localFile.id)
+                );
+                if (!exists) {
+                    data.links.push({
+                        id: 'l' + (data.nextId++),
+                        source: { treeId: localTreeId, nodeId: localFile.id },
+                        target: { treeId: cloudTreeId, nodeId: cloudFile.id }
+                    });
+                    successCount++;
+                }
+            }
+
+            // 存储解析结果供预览
+            wizardState.configParsed = {
+                disk1: baseDisk1,
+                disk2: baseDisk2,
+                localPath: baseLocalPath,
+                cloudPath: baseCloudPath,
+                mappings: uniqueMappings
+            };
+
+            saveState();
+            renderCurrentTree();
+
+            let msg = '✅ 成功导入并建立 ' + successCount + ' 个映射';
+            if (dupCount > 0) msg += '（去重 ' + dupCount + ' 个重复项）';
+            if (files.length > 1) msg += '，合并 ' + files.length + ' 个文件';
+            showToast(msg, 'success');
+
+            // 重新渲染向导步骤以显示最新状态
+            renderWizardStep();
+            event.target.value = '';
+        }
+
+        function renderFileSelection(role, title) {
+            const isLocal = role === 'local';
+            const treeId = isLocal ? 'local' : wizardState.targetDisk;
+            if (!treeId) { return '<div>请先选择目标云盘</div>'; }
+            const dirId = isLocal ? wizardState.localDirId : wizardState.targetDirId;
+            const tree = data.trees[treeId];
+            if (!tree) return '<div>盘不存在</div>';
+            let nodes = tree.nodes;
+            if (dirId) {
+                const dirNode = getNode(treeId, dirId);
+                if (dirNode && dirNode.type === 'folder') nodes = dirNode.children || [];
+            }
+            const selected = isLocal ? wizardState.localSelected : wizardState.targetSelected;
+            const sortFn = (a, b) => a.name.localeCompare(b.name);
+            const sorted = nodes.slice().sort(sortFn);
+
+            let html2 = `<div data-role="${role}"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <span style="font-weight:500;font-size:13px;">${title}</span>
+                <span style="font-size:11px;color:#94a3b8;">已选 ${selected.length} 个</span>
+            </div>`;
+            const path2 = getCurrentDirPath(treeId);
+            html2 +=
+                `<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📂 ${path2.length > 0 ? path2.map(n => n.name).join(' › ') : '根目录'}</div>`;
+            if (dirId) {
+                html2 +=
+                    `<button onclick="navigateWizardDir('${role}', null)" style="padding:2px 10px;border:none;border-radius:12px;background:#334155;color:#e2e8f0;font-size:11px;cursor:pointer;margin-bottom:4px;">⬆ 上级</button>`;
+            }
+            html2 += `<div class="file-list">`;
+            if (sorted.length === 0) {
+                html2 += `<div style="padding:8px;text-align:center;color:#64748b;font-size:12px;">此目录为空</div>`;
+            } else {
+                sorted.forEach(node => {
+                    const isSelected = selected.includes(node.id);
+                    const isFolder = node.type === 'folder';
+                    const icon = isFolder ? '📁' : '🖼️';
+                    const meta = isFolder ? (node.children ? node.children.length : 0) + ' 项' : formatSize(node
+                        .size || 0);
+                    const clickHandler = isFolder ?
+                        `onclick="navigateWizardDir('${role}', '${node.id}')"` :
+                        `onclick="toggleFileSelection('${role}', '${node.id}')"`;
+                    html2 += `<div class="file-item" data-node-id="${node.id}" ${clickHandler}>
+                        <div class="check-box ${isSelected ? 'checked' : ''}">${isSelected ? '✓' : ''}</div>
+                        <span class="file-icon">${icon}</span>
+                        <span class="file-name">${node.name}</span>
+                        <span class="file-meta">${meta}</span>
+                        ${isFolder ? `<span style="color:#64748b;font-size:12px;">›</span>` : ''}
+                    </div>`;
+                });
+            }
+            html2 += `</div>`;
+            html2 += `<div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
+                <button onclick="wizardSelectAll('${role}')" style="padding:2px 10px;border:none;border-radius:12px;background:#1e3a8a;color:#93c5fd;font-size:11px;cursor:pointer;">全选</button>
+                <button onclick="wizardClearAll('${role}')" style="padding:2px 10px;border:none;border-radius:12px;background:#334155;color:#e2e8f0;font-size:11px;cursor:pointer;">清空</button>
+                <span style="font-size:10px;color:#94a3b8;margin-left:4px;">${isLocal ? '选择本地盘文件' : '选择目标盘文件'}</span>
+            </div></div>`;
+            return html2;
+        }
+
+        function toggleFileSelection(role, nodeId) {
+            const isLocal = role === 'local';
+            const treeId = isLocal ? 'local' : wizardState.targetDisk;
+            if (!treeId) return;
+            const node = getNode(treeId, nodeId);
+            if (!node || node.type === 'folder') return;
+            const arr = isLocal ? wizardState.localSelected : wizardState.targetSelected;
+            const idx = arr.indexOf(nodeId);
+            if (idx > -1) arr.splice(idx, 1);
+            else arr.push(nodeId);
+            renderWizardStep();
+        }
+
+        function navigateWizardDir(role, dirId) {
+            const isLocal = role === 'local';
+            const treeId = isLocal ? 'local' : wizardState.targetDisk;
+            if (!treeId) return;
+            if (dirId) {
+                const node = getNode(treeId, dirId);
+                if (!node || node.type !== 'folder') return;
+                if (isLocal) wizardState.localDirId = dirId;
+                else wizardState.targetDirId = dirId;
+            } else {
+                if (isLocal) {
+                    const path = getNodePath(treeId, wizardState.localDirId);
+                    if (path && path.length > 1) wizardState.localDirId = path[path.length - 2].id;
+                    else wizardState.localDirId = null;
+                } else {
+                    const path = getNodePath(treeId, wizardState.targetDirId);
+                    if (path && path.length > 1) wizardState.targetDirId = path[path.length - 2].id;
+                    else wizardState.targetDirId = null;
+                }
+            }
+            renderWizardStep();
+        }
+
+        function wizardSelectAll(role) {
+            const isLocal = role === 'local';
+            const treeId = isLocal ? 'local' : wizardState.targetDisk;
+            if (!treeId) return;
+            const dirId = isLocal ? wizardState.localDirId : wizardState.targetDirId;
+            const tree = data.trees[treeId];
+            let nodes = tree.nodes;
+            if (dirId) {
+                const dirNode = getNode(treeId, dirId);
+                if (dirNode && dirNode.type === 'folder') nodes = dirNode.children || [];
+            }
+            const arr = isLocal ? wizardState.localSelected : wizardState.targetSelected;
+            nodes.forEach(node => {
+                if (node.type === 'file' && !arr.includes(node.id)) arr.push(node.id);
+            });
+            renderWizardStep();
+        }
+
+        function wizardClearAll(role) {
+            const isLocal = role === 'local';
+            const arr = isLocal ? wizardState.localSelected : wizardState.targetSelected;
+            arr.length = 0;
+            renderWizardStep();
+        }
+
+        function renderPairConfig() {
+            const localSelected = wizardState.localSelected;
+            const targetSelected = wizardState.targetSelected;
+            if (localSelected.length === 0 || targetSelected.length === 0) {
+                return `<div style="text-align:center;padding:12px;color:#94a3b8;">
+                    <div style="font-size:32px;">⚠️</div>
+                    <div style="font-size:13px;">请先在两侧各选择至少一个文件</div>
+                    <div style="font-size:11px;margin-top:2px;">本地已选: ${localSelected.length}，目标已选: ${targetSelected.length}</div>
+                </div>`;
+            }
+            const pairs = [];
+            const localNodes = localSelected.map(id => getNode('local', id)).filter(Boolean);
+            const targetNodes = targetSelected.map(id => getNode(wizardState.targetDisk, id)).filter(Boolean);
+            const maxLen = Math.min(localNodes.length, targetNodes.length);
+            for (let i = 0; i < maxLen; i++) {
+                pairs.push({ left: localNodes[i], right: targetNodes[i] });
+            }
+            let html = `<div style="margin-bottom:4px;font-size:11px;color:#94a3b8;">
+                本地 ${localNodes.length} 个，目标 ${targetNodes.length} 个
+                ${localNodes.length !== targetNodes.length ? '<span style="color:#fcd34d;"> ⚠️ 数量不匹配，按较小数量配对</span>' : ''}
+            </div>`;
+            if (pairs.length === 0) {
+                html += `<div style="text-align:center;padding:12px;color:#64748b;">没有可配对的项</div>`;
+                return html;
+            }
+            html += `<div class="pair-list">`;
+            pairs.forEach((pair, idx) => {
+                html += `<div class="pair-row">
+                    <div class="pair-left" onclick="selectSwap('left', ${idx})">${pair.left ? pair.left.name : '(空)'}</div>
+                    <span class="pair-arrow">↔</span>
+                    <div class="pair-right" onclick="selectSwap('right', ${idx})">${pair.right ? pair.right.name : '(空)'}</div>
+                </div>`;
+            });
+            html += `</div>`;
+            html +=
+                `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">💡 点击左侧或右侧可互换配对顺序</div>`;
+            wizardState.pairs = pairs;
+            return html;
+        }
+
+        function selectSwap(side, index) {
+            const pairs = wizardState.pairs;
+            if (index < 0 || index >= pairs.length) return;
+            if (side === 'left') {
+                if (index > 0) {
+                    const temp = pairs[index].left;
+                    pairs[index].left = pairs[index - 1].left;
+                    pairs[index - 1].left = temp;
+                }
+            } else {
+                if (index < pairs.length - 1) {
+                    const temp = pairs[index].right;
+                    pairs[index].right = pairs[index + 1].right;
+                    pairs[index + 1].right = temp;
+                }
+            }
+            renderWizardStep();
+        }
+
+        function renderPreview() {
+            const pairs = wizardState.pairs;
+            if (pairs.length === 0) {
+                return `<div style="text-align:center;padding:12px;color:#94a3b8;">没有映射关系</div>`;
+            }
+            let html = `<div class="preview-list">`;
+            pairs.forEach((pair, idx) => {
+                const leftName = pair.left ? pair.left.name : '(空)';
+                const rightName = pair.right ? pair.right.name : '(空)';
+                html += `<div class="preview-item">
+                    <span class="preview-left">${leftName}</span>
+                    <span style="color:#64748b;font-size:11px;"> ↔ </span>
+                    <span class="preview-right">${rightName}</span>
+                </div>`;
+            });
+            html += `</div>`;
+            html +=
+                `<div style="margin-top:4px;font-size:11px;color:#94a3b8;">即将建立 ${pairs.length} 对映射关系</div>`;
+            return html;
+        }
+
+        function mapWizardPrev() {
+            if (wizardState.step > 0) {
+                wizardState.step--;
+                if (wizardState.step === 0 && wizardState.mode === 'upload') {
+                    wizardState.mode = null;
+                }
+                renderWizardStep();
+            }
+        }
+
+        function mapWizardNext() {
+            const step = wizardState.step;
+            if (step === 0 && !wizardState.mode) {
+                showToast('请选择一种模式', 'error');
+                return;
+            }
+            if (step === 1 && wizardState.mode === 'manual' && !wizardState.targetDisk) {
+                showToast('请选择目标云盘', 'error');
+                return;
+            }
+            if (step === 2) {
+                if (wizardState.localSelected.length === 0) {
+                    showToast('请至少选择一个本地文件', 'error');
+                    return;
+                }
+            }
+            if (step === 3) {
+                if (wizardState.targetSelected.length === 0) {
+                    showToast('请至少选择一个目标盘文件', 'error');
+                    return;
+                }
+            }
+            if (step === 4) {
+                const localNodes = wizardState.localSelected.map(id => getNode('local', id)).filter(Boolean);
+                const targetNodes = wizardState.targetSelected.map(id => getNode(wizardState.targetDisk, id)).filter(
+                Boolean);
+                const pairs = [];
+                const maxLen = Math.min(localNodes.length, targetNodes.length);
+                for (let i = 0; i < maxLen; i++) {
+                    pairs.push({ left: localNodes[i], right: targetNodes[i] });
+                }
+                if (pairs.length === 0) {
+                    showToast('没有可配对的项', 'error');
+                    return;
+                }
+                wizardState.pairs = pairs;
+            }
+            if (step === 5) {
+                confirmMapWizard();
+                return;
+            }
+            if (step === 1 && wizardState.mode === 'upload') {
+                if (!wizardState.configParsed) {
+                    showToast('请上传并解析配置文件', 'error');
+                    return;
+                }
+                closeMapWizard();
+                return;
+            }
+            if (step < 5) {
+                wizardState.step++;
+                renderWizardStep();
+            }
+        }
+
+        function confirmMapWizard() {
+            const pairs = wizardState.pairs;
+            if (pairs.length === 0) {
+                showToast('没有映射关系可建立', 'error');
+                return;
+            }
+            const targetTreeId = wizardState.targetDisk;
+            if (!targetTreeId) {
+                showToast('目标云盘无效', 'error');
+                return;
+            }
+            let added = 0;
+            pairs.forEach(pair => {
+                if (!pair.left || !pair.right) return;
+                const exists = data.links.some(link =>
+                    (link.source.treeId === 'local' && link.source.nodeId === pair.left.id &&
+                        link.target.treeId === targetTreeId && link.target.nodeId === pair.right.id) ||
+                    (link.source.treeId === targetTreeId && link.source.nodeId === pair.right.id &&
+                        link.target.treeId === 'local' && link.target.nodeId === pair.left.id)
+                );
+                if (!exists) {
+                    data.links.push({
+                        id: 'l' + (data.nextId++),
+                        source: { treeId: 'local', nodeId: pair.left.id },
+                        target: { treeId: targetTreeId, nodeId: pair.right.id }
+                    });
+                    added++;
+                }
+            });
+            saveState();
+            renderCurrentTree();
+            closeMapWizard();
+            showToast('✅ 成功建立 ' + added + ' 个映射', 'success');
+        }
+
+        // ============================================================
+        //  导入导出（带确认）
+        // ============================================================
+        function exportData() {
+            if (!confirm('确定要导出当前数据为备份文件吗？')) {
+                return;
+            }
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '三盘映射备份_' + new Date().toISOString().slice(0, 10) + '.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            showToast('📤 导出成功', 'success');
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported.trees && imported.links !== undefined) {
+                        if (confirm('导入将覆盖当前数据，确定继续吗？')) {
+                            data = imported;
+                            TREE_IDS.forEach(id => {
+                                if (!data.trees[id]) data.trees[id] = { id: id, label: DEFAULT_LABELS[id],
+                                    nodes: [], currentDir: null };
+                            });
+                            if (!data.selectedNodes) data.selectedNodes = [];
+                            data.multiMode = false;
+                            data.movingMode = false;
+                            if (!data.sortKey) data.sortKey = 'name-asc';
+                            data.currentTreeId = data.currentTreeId || 'local';
+                            fixNextId();
+                            saveState();
+                            renderCurrentTree();
+                            showToast('✅ 导入成功！', 'success');
+                        }
+                    } else showToast('❌ 无效的备份文件', 'error');
+                } catch (err) { showToast('❌ 解析失败', 'error'); }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // ============================================================
+        //  初始化
+        // ============================================================
+        if (!loadState()) {
+            initDemo();
+        } else {
+            let hasNodes = false;
+            TREE_IDS.forEach(id => {
+                if (data.trees[id] && data.trees[id].nodes && data.trees[id].nodes.length > 0) hasNodes = true;
+            });
+            if (!hasNodes) {
+                initDemo();
+            }
+        }
+
+        initEvents();
+        updateTabs();
+        updateBackBtn();
+        updateTitlePath();
+        updateSortMenu();
+        renderCurrentTree();
+
+        window.addEventListener('beforeunload', function() { if (_longPressTimer) clearTimeout(_longPressTimer); });
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(() => console.log('✅ Service Worker 注册成功'))
+                .catch(err => console.log('❌ Service Worker 注册失败:', err));
+        }
+    </script>
+</body>
+</html>
