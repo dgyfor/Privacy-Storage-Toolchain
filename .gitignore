@@ -1,0 +1,10 @@
+index.json
+index.jsonl
+encrypted_index.txt
+encrypted_index.txt.bak
+passwords.txt
+.enc_cache
+.enc_sizes.txt
+.idx_groups/
+tmp_index.json
+.tmp_global_index.txt
