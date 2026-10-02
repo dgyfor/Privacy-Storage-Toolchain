@@ -6,13 +6,14 @@
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 1400px; margin: 2rem auto; padding: 0 1rem; }
   h1 { font-size: 1.4rem; margin: 0 0 .2rem; }
   .sub { color: #888; font-size: .85rem; margin-bottom: 1.2rem; }
   .bar { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
   .stat { background: #f4f4f4; padding: .4rem .8rem; border-radius: 6px; font-size: .85rem; }
   @media (prefers-color-scheme: dark) { .stat { background: #2a2a2a; } }
-  input[type=file] { font-size: .85rem; }
+  .pick { display: flex; flex-direction: column; gap: .2rem; font-size: .8rem; color: #666; }
+  .pick input[type=file] { font-size: .85rem; }
   input[type=search] { padding: .4rem .6rem; font-size: .9rem; width: 240px; border: 1px solid #ccc; border-radius: 6px; }
   table { width: 100%; border-collapse: collapse; font-size: .85rem; }
   th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid #e5e5e5; }
@@ -20,66 +21,134 @@
   @media (prefers-color-scheme: dark) { th { background: #1e1e1e; } th, td { border-bottom-color: #333; } }
   td.mono { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; }
   .empty { color: #888; padding: 2rem; text-align: center; }
-  .trunc { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trunc { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cloud-on { color: #0a7a3d; font-weight: 600; }
+  .cloud-off { color: #bbb; }
 </style>
 </head>
 <body>
 <h1>隐私文件映射器</h1>
-<div class="sub">读取 index.jsonl，展示本地加密文件映射。数据不出浏览器。</div>
+<div class="sub">读取 index.jsonl 与 encrypted_index.txt（GLOBAL_INDEX），按 encrypted_name 做客户端 join。数据不出浏览器。</div>
 <div class="bar">
-  <input type="file" id="file" accept=".jsonl,.json,.txt">
-  <input type="search" id="q" placeholder="搜索原文件名/加密名/路径" disabled>
+  <label class="pick">index.jsonl
+    <input type="file" id="fileJson" accept=".jsonl,.json,.txt">
+  </label>
+  <label class="pick">GLOBAL_INDEX（可选）
+    <input type="file" id="fileGlobal" accept=".txt">
+  </label>
+  <input type="search" id="q" placeholder="搜索原文件名/加密名/路径/云盘" disabled>
   <span class="stat" id="s1">0 条</span>
   <span class="stat" id="s2">0 B</span>
+  <span class="stat" id="s3" style="display:none">云盘 0 条</span>
 </div>
 <table>
-  <thead>
-    <tr><th>原文件名</th><th>加密名</th><th>相对路径</th><th>大小</th><th>创建时间</th><th>SHA-256</th></tr>
-  </thead>
-  <tbody id="tb"><tr><td colspan="6" class="empty">选择 index.jsonl 开始</td></tr></tbody>
+  <thead id="th"><tr><th colspan="6" class="empty">先选择 index.jsonl</th></tr></thead>
+  <tbody id="tb"></tbody>
 </table>
 <script>
-const $file = document.getElementById('file');
+const $json = document.getElementById('fileJson');
+const $global = document.getElementById('fileGlobal');
 const $q = document.getElementById('q');
+const $th = document.getElementById('th');
 const $tb = document.getElementById('tb');
 const $s1 = document.getElementById('s1');
 const $s2 = document.getElementById('s2');
-let rows = [];
+const $s3 = document.getElementById('s3');
+
+let rows = [];          // jsonl 记录
+let globalMap = null;   // Map<enc_name, {cloud_name, cloud_path}>
+
 function human(b) {
   if (b < 1024) return b + ' B';
   if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
   return (b/1048576).toFixed(2) + ' MB';
 }
 function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function fmtTime(s) {
   try { return new Date(s).toLocaleString('zh-CN', { hour12: false }); } catch { return s; }
 }
+
+function parseGlobal(text) {
+  const map = new Map();
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const parts = line.split('|').map(x => x.trim());
+    if (parts.length < 3) continue;
+    const [enc, , , cname, cpath] = parts;
+    if (!enc) continue;
+    if (!cname && !cpath) continue;
+    map.set(enc, { cloud_name: cname || '', cloud_path: cpath || '' });
+  }
+  return map;
+}
+
+function renderHead() {
+  const hasCloud = globalMap && globalMap.size > 0;
+  $th.innerHTML = '<tr>' +
+    '<th>原文件名</th><th>加密名</th><th>相对路径</th><th>大小</th><th>创建时间</th><th>SHA-256</th>' +
+    (hasCloud ? '<th>云盘</th><th>云盘路径</th>' : '') +
+    '</tr>';
+}
+
 function render() {
+  if (!rows.length) {
+    $th.innerHTML = '<tr><th colspan="6" class="empty">先选择 index.jsonl</th></tr>';
+    $tb.innerHTML = '';
+    $s1.textContent = '0 条'; $s2.textContent = '0 B'; $s3.style.display = 'none';
+    return;
+  }
+  renderHead();
+  const hasCloud = globalMap && globalMap.size > 0;
   const kw = $q.value.trim().toLowerCase();
   const list = kw ? rows.filter(r =>
     (r.original_name||'').toLowerCase().includes(kw) ||
     (r.encrypted_name||'').toLowerCase().includes(kw) ||
-    (r.relative_path||'').toLowerCase().includes(kw)) : rows;
+    (r.relative_path||'').toLowerCase().includes(kw) ||
+    (hasCloud && globalMap.has(r.encrypted_name) &&
+      ((globalMap.get(r.encrypted_name).cloud_name||'').toLowerCase().includes(kw) ||
+       (globalMap.get(r.encrypted_name).cloud_path||'').toLowerCase().includes(kw)))) : rows;
+
   if (!list.length) {
-    $tb.innerHTML = '<tr><td colspan="6" class="empty">无匹配</td></tr>';
+    $tb.innerHTML = '<tr><td colspan="' + (hasCloud ? 8 : 6) + '" class="empty">无匹配</td></tr>';
   } else {
-    $tb.innerHTML = list.map(r =>
-      '<tr>' +
-      '<td class="trunc" title="' + esc(r.original_name||'') + '">' + esc(r.original_name||'') + '</td>' +
-      '<td class="mono trunc" title="' + esc(r.encrypted_name||'') + '">' + esc(r.encrypted_name||'') + '</td>' +
-      '<td class="trunc" title="' + esc(r.relative_path||'') + '">' + esc(r.relative_path||'') + '</td>' +
-      '<td>' + (r.sizes && r.sizes.encrypted != null ? human(r.sizes.encrypted) : '\u2014') + '</td>' +
-      '<td>' + esc(fmtTime(r.created_at||'')) + '</td>' +
-      '<td class="mono" title="' + esc(r.sha256||'') + '">' + esc((r.sha256||'').slice(0,12)) + (r.sha256 ? '\u2026' : '') + '</td>' +
-      '</tr>').join('');
+    $tb.innerHTML = list.map(r => {
+      const g = hasCloud ? (globalMap.get(r.encrypted_name) || null) : null;
+      let cloudCells = '';
+      if (hasCloud) {
+        if (g && (g.cloud_name || g.cloud_path)) {
+          cloudCells = '<td class="cloud-on">' + esc(g.cloud_name || '—') + '</td>' +
+                       '<td class="trunc" title="' + esc(g.cloud_path) + '">' + esc(g.cloud_path || '—') + '</td>';
+        } else {
+          cloudCells = '<td class="cloud-off">—</td><td class="cloud-off">—</td>';
+        }
+      }
+      return '<tr>' +
+        '<td class="trunc" title="' + esc(r.original_name) + '">' + esc(r.original_name) + '</td>' +
+        '<td class="mono trunc" title="' + esc(r.encrypted_name) + '">' + esc(r.encrypted_name) + '</td>' +
+        '<td class="trunc" title="' + esc(r.relative_path) + '">' + esc(r.relative_path) + '</td>' +
+        '<td>' + (r.sizes && r.sizes.encrypted != null ? human(r.sizes.encrypted) : '\u2014') + '</td>' +
+        '<td>' + esc(fmtTime(r.created_at)) + '</td>' +
+        '<td class="mono" title="' + esc(r.sha256) + '">' + esc((r.sha256||'').slice(0,12)) + (r.sha256 ? '\u2026' : '') + '</td>' +
+        cloudCells +
+        '</tr>';
+    }).join('');
   }
   const total = list.reduce((a, r) => a + ((r.sizes && r.sizes.encrypted) || 0), 0);
   $s1.textContent = list.length + ' 条';
   $s2.textContent = human(total);
+  if (hasCloud) {
+    const hit = rows.filter(r => globalMap.has(r.encrypted_name)).length;
+    $s3.textContent = '云盘 ' + hit + '/' + rows.length;
+    $s3.style.display = '';
+  } else {
+    $s3.style.display = 'none';
+  }
 }
-$file.addEventListener('change', e => {
+
+$json.addEventListener('change', e => {
   const f = e.target.files[0];
   if (!f) return;
   const fr = new FileReader();
@@ -89,12 +158,25 @@ $file.addEventListener('change', e => {
       $q.disabled = false;
       render();
     } catch (err) {
-      $tb.innerHTML = '<tr><td colspan="6" class="empty">解析失败：' + esc(err.message) + '</td></tr>';
-      $s1.textContent = '0 条'; $s2.textContent = '0 B'; rows = [];
+      $th.innerHTML = '<tr><th colspan="6" class="empty">JSONL 解析失败：' + esc(err.message) + '</th></tr>';
+      $tb.innerHTML = ''; rows = [];
+      $s1.textContent = '0 条'; $s2.textContent = '0 B'; $s3.style.display = 'none';
     }
   };
   fr.readAsText(f, 'utf-8');
 });
+
+$global.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    globalMap = parseGlobal(fr.result);
+    render();
+  };
+  fr.readAsText(f, 'utf-8');
+});
+
 $q.addEventListener('input', render);
 </script>
 </body>
