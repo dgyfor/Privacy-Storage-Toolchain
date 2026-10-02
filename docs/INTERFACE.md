@@ -1,23 +1,54 @@
-# 系统模块接口标准（四个AI分包合同）
+# INTERFACE.md — 接口与数据契约
 
-各模块必须严格遵守以下接口，否则无法集成：
+任何脚本/前端改动不得破坏以下契约。
 
-1. 【加密模块 termux-encrypt】
-- 输入：指定目录下的原始文件
-- 输出：加密后的 `.enc` 文件 + `index.json`（记录原文件名、加密文件名、哈希）
-- 约束：必须使用 Bash + OpenSSL，必须处理安卓路径空格问题
+## 1. 目录结构
 
-2. 【容灾模块 par2-recovery】
-- 输入：加密后的 `.enc` 文件目录
-- 输出：`.par2` 校验文件 + 修复日志
-- 约束：必须在 Termux 环境下可运行，支持批量交互式修复
+| 用途 | 路径 |
+|---|---|
+| 加密输出 | /storage/emulated/0/Documents/Encrypted_Vault/加密文件/ |
+| 解密输出 | /storage/emulated/0/Documents/Encrypted_Vault/解密输出/ |
+| 对照表 | /storage/emulated/0/Documents/Encrypted_Vault/对照表/ |
+| PAR2备份 | /storage/emulated/0/Documents/Encrypted_Vault/Par2_Backups/ |
+| 主索引(人读) | /storage/emulated/0/encrypted_index.txt |
+| JSONL索引(机读) | .../对照表/index.jsonl |
 
-3. 【映射模块 mapping-spa】
-- 输入：读取加密模块生成的 `index.json`
-- 输出：原生 HTML/CSS/JS 渲染的树状 UI
-- 约束：纯原生 JS，必须支持移动端触摸事件和多选状态机
+## 2. index.jsonl 契约（机读）
 
-4. 【展示层 diary-site】
-- 输入：Supabase 云端元数据
-- 输出：可访问的日记网站（记录文件加密/恢复日志）
-- 约束：客户端加密（PBKDF2+AES），不碰原始文件
+一行一 JSON，前端解析：
+
+    const rows = text.split('\n').filter(Boolean).map(JSON.parse);
+
+字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| encrypted_name | string | 加密文件名(basename)，与 GLOBAL_INDEX 第1列对齐 |
+| original_name | string | 原文件名 |
+| relative_path | string | 相对加密根目录的子路径 |
+| cipher | string | 固定 AES-256-CBC |
+| created_at | string | ISO8601 UTC |
+| sha256 | string | 密文 SHA-256 |
+| sizes.encrypted | number | 密文字节数 |
+
+示例：
+
+    {"encrypted_name":"enc_1790925335_9217","original_name":"map_test.txt","relative_path":"test_encrypt","cipher":"AES-256-CBC","created_at":"2026-10-02T07:15:35Z","sha256":"7223fe7f62fa7ed289f6e1762a620f47eded5d49cda5d71c03b4df321f271fc0","sizes":{"encrypted":32}}
+
+## 3. GLOBAL_INDEX 契约（人读）
+
+竖线 7 列：
+
+    enc_name|orig_name|rel_path|cloud_name|cloud_path|size|reserved
+
+## 4. 脚本接口
+
+- 加密：source ~/Privacy-Storage-Toolchain/termux-encrypt/encrypt_new.sh 然后 ea
+- PAR2：source /sdcard/termux_shared.sh 然后 par22
+
+## 5. 不变式
+
+1. 临时文件写共享存储，不 mktemp 到 Termux 内部
+2. encrypted_name 用 basename
+3. 改脚本用 UTF-8 无 BOM
+4. 云盘字段当前仅在 GLOBAL_INDEX 第4、5列，尚未进 index.jsonl（待办）
