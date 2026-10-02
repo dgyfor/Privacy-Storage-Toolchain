@@ -8,7 +8,7 @@ DECRYPT_ROOT="/storage/emulated/0/Documents/Encrypted_Vault/解密输出"
 ENCRYPT_ROOT="/storage/emulated/0/Documents/Encrypted_Vault/加密文件"
 MAPPING_ROOT="/storage/emulated/0/Documents/Encrypted_Vault/对照表"
 GLOBAL_INDEX="/storage/emulated/0/encrypted_index.txt"
-INDEX_JSON="$MAPPING_ROOT/index.json"
+INDEX_JSON="$MAPPING_ROOT/index.jsonl"
 PASSWORDS_FILE="$MAPPING_ROOT/passwords.txt"
 CACHE_FILE="$MAPPING_ROOT/.enc_cache"
 PAR2_ROOT="/storage/emulated/0/Documents/Encrypted_Vault/Par2_Backups"
@@ -26,7 +26,7 @@ get_relative_path() {
     rel_path="${rel_path#$encrypt_root_clean}"
     rel_path="${rel_path#/}"
     rel_path="${rel_path# Documents/}"
-    rel_path="${rel_path#爱-Allow/AV/}"
+    rel_path="${rel_path#爱-Allow/name1/}"
     rel_path="${rel_path#爱-Allow/}"
     rel_path=$(echo "$rel_path" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[[:space:]][[:space:]]*/ /g')
     [[ -z "$rel_path" ]] && rel_path="."
@@ -190,8 +190,10 @@ _encrypt_file_batch() {
 
     openssl enc -aes-256-cbc -pbkdf2 -salt -in "$file" -out "$enc_name" -k "$pass" 2>/dev/null
     if [[ $? -eq 0 ]]; then
-        local dat_size=$(stat -c %s "$enc_name" 2>/dev/null || echo 0)
-        echo "${enc_name%.dat}|$(basename "$file")|$rel_path|$dat_size"
+         local dat_size=$(stat -c %s "$enc_name" 2>/dev/null || echo 0)
+local sha=$(sha256sum "$enc_name" | cut -d' ' -f1)
+local created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "$(basename "${enc_name%.dat}")|$(basename "$file")|$rel_path|$dat_size|$sha|$created"
         return 0
     else
         echo "❌ 加密失败: $file" >&2
@@ -333,15 +335,14 @@ ea() {
     if [[ ${#success_records[@]} -gt 0 ]]; then
         echo "📝 正在更新索引（${#success_records[@]} 个文件）..."
         # 追加到主索引和辅助索引
-        local tmp_idx=$(mktemp)
+        local tmp_idx="$MAPPING_ROOT/.tmp_global_index.txt"
         local tmp_json="$MAPPING_ROOT/.tmp_index.json"
-local INDEX_JSON="$MAPPING_ROOT/index.json"
         cat "$GLOBAL_INDEX" > "$tmp_idx"
         for record in "${success_records[@]}"; do
-            IFS='|' read -r enc orig path size <<< "$record"
-            echo "$enc | $orig | $path |  |  | $size" >> "$tmp_idx"
-            printf '{"encrypted_name":"%s","original_name":"%s","relative_path":"%s","sizes":{"encrypted":%s}}\n' \
-  "$enc" "$orig" "$path" "$size" >> "$tmp_json"
+            IFS='|' read -r enc orig path size sha created <<< "$record"
+echo "$enc | $orig | $path |  |  | $size" >> "$tmp_idx"
+printf '{"encrypted_name":"%s","original_name":"%s","relative_path":"%s","cipher":"AES-256-CBC","created_at":"%s","sha256":"%s","sizes":{"encrypted":%s}}\n' \
+  "$enc" "$orig" "$path" "$created" "$sha" "$size" >> "$tmp_json"
             # 同时更新 .enc_sizes.txt
             echo "$enc|$size" >> "$MAPPING_ROOT/.enc_sizes.txt"
             # 更新对照表
