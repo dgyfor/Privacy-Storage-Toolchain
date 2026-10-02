@@ -358,6 +358,13 @@ printf '{"encrypted_name":"%s","original_name":"%s","relative_path":"%s","cipher
     # --- 报告结果 ---
     local success_count=${#success_records[@]}
     local fail_count=${#failed_files[@]}
+    if [[ ${#success_records[@]} -gt 0 ]]; then
+        echo "✅ 加密成功："
+        for record in "${success_records[@]}"; do
+            IFS='|' read -r enc orig path size sha created <<< "$record"
+            echo "  $orig → ${enc}.dat"
+        done
+    fi
     echo "加密完成：成功 $success_count，失败 $fail_count。"
     if [[ $fail_count -gt 0 ]]; then
         echo "❌ 失败的文件："
