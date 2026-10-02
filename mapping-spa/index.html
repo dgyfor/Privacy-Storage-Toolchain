@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>隐私文件映射器</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .2rem; }
+  .sub { color: #888; font-size: .85rem; margin-bottom: 1.2rem; }
+  .bar { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  .stat { background: #f4f4f4; padding: .4rem .8rem; border-radius: 6px; font-size: .85rem; }
+  @media (prefers-color-scheme: dark) { .stat { background: #2a2a2a; } }
+  input[type=file] { font-size: .85rem; }
+  input[type=search] { padding: .4rem .6rem; font-size: .9rem; width: 240px; border: 1px solid #ccc; border-radius: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid #e5e5e5; }
+  th { background: #fafafa; position: sticky; top: 0; font-weight: 600; }
+  @media (prefers-color-scheme: dark) { th { background: #1e1e1e; } th, td { border-bottom-color: #333; } }
+  td.mono { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; }
+  .empty { color: #888; padding: 2rem; text-align: center; }
+  .trunc { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<h1>隐私文件映射器</h1>
+<div class="sub">读取 index.jsonl，展示本地加密文件映射。数据不出浏览器。</div>
+<div class="bar">
+  <input type="file" id="file" accept=".jsonl,.json,.txt">
+  <input type="search" id="q" placeholder="搜索原文件名/加密名/路径" disabled>
+  <span class="stat" id="s1">0 条</span>
+  <span class="stat" id="s2">0 B</span>
+</div>
+<table>
+  <thead>
+    <tr><th>原文件名</th><th>加密名</th><th>相对路径</th><th>大小</th><th>创建时间</th><th>SHA-256</th></tr>
+  </thead>
+  <tbody id="tb"><tr><td colspan="6" class="empty">选择 index.jsonl 开始</td></tr></tbody>
+</table>
+<script>
+const $file = document.getElementById('file');
+const $q = document.getElementById('q');
+const $tb = document.getElementById('tb');
+const $s1 = document.getElementById('s1');
+const $s2 = document.getElementById('s2');
+let rows = [];
+function human(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(2) + ' MB';
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtTime(s) {
+  try { return new Date(s).toLocaleString('zh-CN', { hour12: false }); } catch { return s; }
+}
+function render() {
+  const kw = $q.value.trim().toLowerCase();
+  const list = kw ? rows.filter(r =>
+    (r.original_name||'').toLowerCase().includes(kw) ||
+    (r.encrypted_name||'').toLowerCase().includes(kw) ||
+    (r.relative_path||'').toLowerCase().includes(kw)) : rows;
+  if (!list.length) {
+    $tb.innerHTML = '<tr><td colspan="6" class="empty">无匹配</td></tr>';
+  } else {
+    $tb.innerHTML = list.map(r =>
+      '<tr>' +
+      '<td class="trunc" title="' + esc(r.original_name||'') + '">' + esc(r.original_name||'') + '</td>' +
+      '<td class="mono trunc" title="' + esc(r.encrypted_name||'') + '">' + esc(r.encrypted_name||'') + '</td>' +
+      '<td class="trunc" title="' + esc(r.relative_path||'') + '">' + esc(r.relative_path||'') + '</td>' +
+      '<td>' + (r.sizes && r.sizes.encrypted != null ? human(r.sizes.encrypted) : '\u2014') + '</td>' +
+      '<td>' + esc(fmtTime(r.created_at||'')) + '</td>' +
+      '<td class="mono" title="' + esc(r.sha256||'') + '">' + esc((r.sha256||'').slice(0,12)) + (r.sha256 ? '\u2026' : '') + '</td>' +
+      '</tr>').join('');
+  }
+  const total = list.reduce((a, r) => a + ((r.sizes && r.sizes.encrypted) || 0), 0);
+  $s1.textContent = list.length + ' 条';
+  $s2.textContent = human(total);
+}
+$file.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      rows = fr.result.split('\n').filter(l => l.trim()).map(JSON.parse);
+      $q.disabled = false;
+      render();
+    } catch (err) {
+      $tb.innerHTML = '<tr><td colspan="6" class="empty">解析失败：' + esc(err.message) + '</td></tr>';
+      $s1.textContent = '0 条'; $s2.textContent = '0 B'; rows = [];
+    }
+  };
+  fr.readAsText(f, 'utf-8');
+});
+$q.addEventListener('input', render);
+</script>
+</body>
+</html>
