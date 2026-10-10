@@ -341,7 +341,7 @@ ea() {
         for record in "${success_records[@]}"; do
             IFS='|' read -r enc orig path size sha created <<< "$record"
 echo "$enc | $orig | $path |  |  | $size" >> "$tmp_idx"
-printf '{"encrypted_name":"%s","original_name":"%s","relative_path":"%s","cipher":"AES-256-CBC","created_at":"%s","sha256":"%s","sizes":{"encrypted":%s}}\n' \
+printf '{"encrypted_name":"%s","original_name":"%s","relative_path":"%s","clouds":[],"cipher":"AES-256-CBC","created_at":"%s","sha256":"%s","sizes":{"encrypted":%s}}\n' \
   "$enc" "$orig" "$path" "$created" "$sha" "$size" >> "$tmp_json"
             # 同时更新 .enc_sizes.txt
             echo "$enc|$size" >> "$MAPPING_ROOT/.enc_sizes.txt"
@@ -611,6 +611,7 @@ _lk_list_files() {
     local dir_nospace="${dir// /}"
     while IFS='|' read -r enc orig path rest; do
         enc="${enc// /}"
+        enc="${enc// /}"
         orig="${orig// /}"
         path="${path// /}"
         if [[ "$path" == "$dir_nospace" ]]; then
@@ -817,6 +818,7 @@ _lk_browse_files() {
 
     while IFS='|' read -r enc orig path rest; do
         enc="${enc// /}"
+        enc="${enc// /}"
         orig="${orig// /}"
         path="${path// /}"
         [[ -z "$path" ]] && path="."
@@ -990,6 +992,7 @@ lk() {
         declare -A match_dirs_raw
         while IFS='|' read -r enc orig path rest; do
             enc="${enc// /}"
+            enc="${enc// /}"
             orig="${orig// /}"
             path="${path// /}"
             if [[ "$orig" =~ $keyword || "$path" =~ $keyword || "$enc" =~ $keyword ]]; then
@@ -1066,6 +1069,7 @@ setcloud() {
     local -a missing_items=()
     local idx=1
     while IFS='|' read -r enc orig path cloud_name cloud_path size; do
+        enc="${enc// /}"
         orig="${orig// /}"
         path="${path// /}"
         cloud_name="${cloud_name// /}"
@@ -1127,6 +1131,12 @@ setcloud() {
             }
         ' "$GLOBAL_INDEX" > "$GLOBAL_INDEX.tmp" && mv "$GLOBAL_INDEX.tmp" "$GLOBAL_INDEX"
     done
+    # 同步云盘信息到 index.jsonl
+    for idx in "${selected_indices[@]}"; do
+        local item="${missing_items[$idx]}"
+        IFS='|' read -r _enc _orig _path _size <<< "$item"
+        python3 "$HOME/Privacy-Storage-Toolchain/termux-encrypt/sync_clouds.py" "$INDEX_JSON" "$_enc" "$cloud_name" "$cloud_path" >/dev/null 2>&1 || true
+    done
     echo "✅ 已更新 ${#selected_indices[@]} 条记录的云盘信息。"
 }
 
@@ -1134,6 +1144,7 @@ uploaded() {
     echo "📋 已登记云盘信息的记录："
     local count=0
     while IFS='|' read -r enc orig path cloud_name cloud_path size; do
+        enc="${enc// /}"
         orig="${orig// /}"
         cloud_name="${cloud_name// /}"
         cloud_path="${cloud_path// /}"
@@ -1322,6 +1333,7 @@ genmap() {
         echo "本地盘, $cloud_name"
         echo "$rel_path_original, $cloud_path"
         while IFS='|' read -r enc orig path cloud; do
+            enc="${enc// /}"
             orig="${orig// /}"
             enc="${enc// /}"
             if [[ -n "$orig" && -n "$enc" ]]; then
