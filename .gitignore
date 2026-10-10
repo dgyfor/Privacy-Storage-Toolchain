@@ -8,3 +8,8 @@ passwords.txt
 .idx_groups/
 tmp_index.json
 .tmp_global_index.txt
+# 快照与隐私文件，勿提交
+docs/老王毕设-快照-*.json
+docs/老王毕设-文件位置-*.json
+*快照*.json
+*文件位置*.json
