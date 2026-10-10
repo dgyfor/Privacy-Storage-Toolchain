@@ -2,182 +2,154 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>隐私文件映射器</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三盘映射器</title>
 <style>
-  :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 1400px; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.4rem; margin: 0 0 .2rem; }
-  .sub { color: #888; font-size: .85rem; margin-bottom: 1.2rem; }
-  .bar { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
-  .stat { background: #f4f4f4; padding: .4rem .8rem; border-radius: 6px; font-size: .85rem; }
-  @media (prefers-color-scheme: dark) { .stat { background: #2a2a2a; } }
-  .pick { display: flex; flex-direction: column; gap: .2rem; font-size: .8rem; color: #666; }
-  .pick input[type=file] { font-size: .85rem; }
-  input[type=search] { padding: .4rem .6rem; font-size: .9rem; width: 240px; border: 1px solid #ccc; border-radius: 6px; }
-  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid #e5e5e5; }
-  th { background: #fafafa; position: sticky; top: 0; font-weight: 600; }
-  @media (prefers-color-scheme: dark) { th { background: #1e1e1e; } th, td { border-bottom-color: #333; } }
-  td.mono { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; }
-  .empty { color: #888; padding: 2rem; text-align: center; }
-  .trunc { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cloud-on { color: #0a7a3d; font-weight: 600; }
-  .cloud-off { color: #bbb; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 16px; background: #f5f5f5; color: #222; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+  input[type="text"], select { padding: 6px 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+  input[type="text"] { flex: 1; min-width: 160px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; word-break: break-all; }
+  th { background: #fafafa; font-weight: 600; }
+  tr:hover { background: #f9f9f9; }
+  .empty { color: #999; text-align: center; padding: 40px 0; }
+  .cloud-tag { display: inline-block; background: #e3f2fd; color: #1565c0; padding: 2px 6px; border-radius: 3px; font-size: 12px; margin: 2px 2px 2px 0; }
+  .muted { color: #999; }
+  .status { font-size: 13px; color: #666; margin-left: auto; }
+  code { font-family: Consolas, Menlo, monospace; font-size: 12px; color: #333; }
 </style>
 </head>
 <body>
-<h1>隐私文件映射器</h1>
-<div class="sub">读取 index.jsonl 与 encrypted_index.txt（GLOBAL_INDEX），按 encrypted_name 做客户端 join。数据不出浏览器。</div>
-<div class="bar">
-  <label class="pick">index.jsonl
-    <input type="file" id="fileJson" accept=".jsonl,.json,.txt">
-  </label>
-  <label class="pick">GLOBAL_INDEX（可选）
-    <input type="file" id="fileGlobal" accept=".txt">
-  </label>
-  <input type="search" id="q" placeholder="搜索原文件名/加密名/路径/云盘" disabled>
-  <span class="stat" id="s1">0 条</span>
-  <span class="stat" id="s2">0 B</span>
-  <span class="stat" id="s3" style="display:none">云盘 0 条</span>
+
+<h1>三盘映射器</h1>
+
+<div class="toolbar">
+  <input type="file" id="fileInput" accept=".jsonl,.json,.txt">
+  <input type="text" id="search" placeholder="搜原文件名 / 加密名">
+  <select id="cloudFilter">
+    <option value="">全部云盘</option>
+  </select>
+  <span class="status" id="status">未加载</span>
 </div>
+
 <table>
-  <thead id="th"><tr><th colspan="6" class="empty">先选择 index.jsonl</th></tr></thead>
-  <tbody id="tb"></tbody>
+  <thead>
+    <tr>
+      <th>原文件名</th>
+      <th>加密名</th>
+      <th>相对路径</th>
+      <th>云盘</th>
+      <th>大小</th>
+    </tr>
+  </thead>
+  <tbody id="tbody">
+    <tr><td colspan="5" class="empty">先选 index.jsonl 文件</td></tr>
+  </tbody>
 </table>
+
 <script>
-const $json = document.getElementById('fileJson');
-const $global = document.getElementById('fileGlobal');
-const $q = document.getElementById('q');
-const $th = document.getElementById('th');
-const $tb = document.getElementById('tb');
-const $s1 = document.getElementById('s1');
-const $s2 = document.getElementById('s2');
-const $s3 = document.getElementById('s3');
+var records = [];
 
-let rows = [];          // jsonl 记录
-let globalMap = null;   // Map<enc_name, {cloud_name, cloud_path}>
+document.getElementById("fileInput").addEventListener("change", function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    parseJSONL(ev.target.result);
+    render();
+  };
+  reader.readAsText(file, "utf-8");
+});
 
-function human(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-  return (b/1048576).toFixed(2) + ' MB';
-}
-function esc(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-function fmtTime(s) {
-  try { return new Date(s).toLocaleString('zh-CN', { hour12: false }); } catch { return s; }
-}
+document.getElementById("search").addEventListener("input", render);
+document.getElementById("cloudFilter").addEventListener("change", render);
 
-function parseGlobal(text) {
-  const map = new Map();
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
+function parseJSONL(text) {
+  records = [];
+  var lines = text.split("\n");
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
     if (!line) continue;
-    const parts = line.split('|').map(x => x.trim());
-    if (parts.length < 3) continue;
-    const [enc, , , cname, cpath] = parts;
-    if (!enc) continue;
-    if (!cname && !cpath) continue;
-    map.set(enc, { cloud_name: cname || '', cloud_path: cpath || '' });
+    try { records.push(JSON.parse(line)); }
+    catch (err) { console.warn("跳过坏行:", line); }
   }
-  return map;
+  buildCloudOptions();
+  document.getElementById("status").textContent = "共 " + records.length + " 条";
 }
 
-function renderHead() {
-  const hasCloud = globalMap && globalMap.size > 0;
-  $th.innerHTML = '<tr>' +
-    '<th>原文件名</th><th>加密名</th><th>相对路径</th><th>大小</th><th>创建时间</th><th>SHA-256</th>' +
-    (hasCloud ? '<th>云盘</th><th>云盘路径</th>' : '') +
-    '</tr>';
+function buildCloudOptions() {
+  var names = {};
+  records.forEach(function(r) {
+    (r.clouds || []).forEach(function(c) {
+      if (c.name) names[c.name] = true;
+    });
+  });
+  var sel = document.getElementById("cloudFilter");
+  sel.innerHTML = '<option value="">全部云盘</option>';
+  Object.keys(names).sort().forEach(function(n) {
+    var opt = document.createElement("option");
+    opt.value = n; opt.textContent = n;
+    sel.appendChild(opt);
+  });
 }
 
 function render() {
-  if (!rows.length) {
-    $th.innerHTML = '<tr><th colspan="6" class="empty">先选择 index.jsonl</th></tr>';
-    $tb.innerHTML = '';
-    $s1.textContent = '0 条'; $s2.textContent = '0 B'; $s3.style.display = 'none';
+  var kw = document.getElementById("search").value.trim().toLowerCase();
+  var cf = document.getElementById("cloudFilter").value;
+  var tbody = document.getElementById("tbody");
+  tbody.innerHTML = "";
+
+  var filtered = records.filter(function(r) {
+    if (kw) {
+      var a = (r.original_name || "").toLowerCase();
+      var b = (r.encrypted_name || "").toLowerCase();
+      if (a.indexOf(kw) === -1 && b.indexOf(kw) === -1) return false;
+    }
+    if (cf) {
+      var has = (r.clouds || []).some(function(c) { return c.name === cf; });
+      if (!has) return false;
+    }
+    return true;
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">没有匹配的记录</td></tr>';
     return;
   }
-  renderHead();
-  const hasCloud = globalMap && globalMap.size > 0;
-  const kw = $q.value.trim().toLowerCase();
-  const list = kw ? rows.filter(r =>
-    (r.original_name||'').toLowerCase().includes(kw) ||
-    (r.encrypted_name||'').toLowerCase().includes(kw) ||
-    (r.relative_path||'').toLowerCase().includes(kw) ||
-    (hasCloud && globalMap.has(r.encrypted_name) &&
-      ((globalMap.get(r.encrypted_name).cloud_name||'').toLowerCase().includes(kw) ||
-       (globalMap.get(r.encrypted_name).cloud_path||'').toLowerCase().includes(kw)))) : rows;
 
-  if (!list.length) {
-    $tb.innerHTML = '<tr><td colspan="' + (hasCloud ? 8 : 6) + '" class="empty">无匹配</td></tr>';
-  } else {
-    $tb.innerHTML = list.map(r => {
-      const g = hasCloud ? (globalMap.get(r.encrypted_name) || null) : null;
-      let cloudCells = '';
-      if (hasCloud) {
-        if (g && (g.cloud_name || g.cloud_path)) {
-          cloudCells = '<td class="cloud-on">' + esc(g.cloud_name || '—') + '</td>' +
-                       '<td class="trunc" title="' + esc(g.cloud_path) + '">' + esc(g.cloud_path || '—') + '</td>';
-        } else {
-          cloudCells = '<td class="cloud-off">—</td><td class="cloud-off">—</td>';
-        }
-      }
-      return '<tr>' +
-        '<td class="trunc" title="' + esc(r.original_name) + '">' + esc(r.original_name) + '</td>' +
-        '<td class="mono trunc" title="' + esc(r.encrypted_name) + '">' + esc(r.encrypted_name) + '</td>' +
-        '<td class="trunc" title="' + esc(r.relative_path) + '">' + esc(r.relative_path) + '</td>' +
-        '<td>' + (r.sizes && r.sizes.encrypted != null ? human(r.sizes.encrypted) : '\u2014') + '</td>' +
-        '<td>' + esc(fmtTime(r.created_at)) + '</td>' +
-        '<td class="mono" title="' + esc(r.sha256) + '">' + esc((r.sha256||'').slice(0,12)) + (r.sha256 ? '\u2026' : '') + '</td>' +
-        cloudCells +
-        '</tr>';
-    }).join('');
-  }
-  const total = list.reduce((a, r) => a + ((r.sizes && r.sizes.encrypted) || 0), 0);
-  $s1.textContent = list.length + ' 条';
-  $s2.textContent = human(total);
-  if (hasCloud) {
-    const hit = rows.filter(r => globalMap.has(r.encrypted_name)).length;
-    $s3.textContent = '云盘 ' + hit + '/' + rows.length;
-    $s3.style.display = '';
-  } else {
-    $s3.style.display = 'none';
-  }
+  filtered.forEach(function(r) {
+    var tr = document.createElement("tr");
+    var clouds = r.clouds || [];
+    var cloudHTML = clouds.length
+      ? clouds.map(function(c) {
+          return '<span class="cloud-tag" title="' + escapeHtml(c.path || "") + '">' + escapeHtml(c.name || "?") + '</span>';
+        }).join("")
+      : '<span class="muted">—</span>';
+    tr.innerHTML =
+      "<td>" + escapeHtml(r.original_name || "") + "</td>" +
+      "<td><code>" + escapeHtml(r.encrypted_name || "") + "</code></td>" +
+      "<td>" + escapeHtml(r.relative_path || "") + "</td>" +
+      "<td>" + cloudHTML + "</td>" +
+      "<td>" + formatSize(r.sizes && r.sizes.encrypted) + "</td>";
+    tbody.appendChild(tr);
+  });
 }
 
-$json.addEventListener('change', e => {
-  const f = e.target.files[0];
-  if (!f) return;
-  const fr = new FileReader();
-  fr.onload = () => {
-    try {
-      rows = fr.result.split('\n').filter(l => l.trim()).map(JSON.parse);
-      $q.disabled = false;
-      render();
-    } catch (err) {
-      $th.innerHTML = '<tr><th colspan="6" class="empty">JSONL 解析失败：' + esc(err.message) + '</th></tr>';
-      $tb.innerHTML = ''; rows = [];
-      $s1.textContent = '0 条'; $s2.textContent = '0 B'; $s3.style.display = 'none';
-    }
-  };
-  fr.readAsText(f, 'utf-8');
-});
+function formatSize(n) {
+  if (n == null) return "";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1024 / 1024).toFixed(1) + " MB";
+}
 
-$global.addEventListener('change', e => {
-  const f = e.target.files[0];
-  if (!f) return;
-  const fr = new FileReader();
-  fr.onload = () => {
-    globalMap = parseGlobal(fr.result);
-    render();
-  };
-  fr.readAsText(f, 'utf-8');
-});
-
-$q.addEventListener('input', render);
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
 </script>
+
 </body>
 </html>
