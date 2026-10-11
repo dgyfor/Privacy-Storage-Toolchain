@@ -26,6 +26,7 @@
 | encrypted_name | string | 加密文件名(basename)，与 GLOBAL_INDEX 第1列对齐 |
 | original_name | string | 原文件名 |
 | relative_path | string | 相对加密根目录的子路径 |
+| clouds | array | 云盘归属列表，元素 {name, path}，可为空数组 |
 | cipher | string | 固定 AES-256-CBC |
 | created_at | string | ISO8601 UTC |
 | sha256 | string | 密文 SHA-256 |
@@ -33,7 +34,7 @@
 
 示例：
 
-    {"encrypted_name":"enc_1790925335_9217","original_name":"map_test.txt","relative_path":"test_encrypt","cipher":"AES-256-CBC","created_at":"2026-10-02T07:15:35Z","sha256":"7223fe7f62fa7ed289f6e1762a620f47eded5d49cda5d71c03b4df321f271fc0","sizes":{"encrypted":32}}
+    {"encrypted_name":"enc_1790925335_9217","original_name":"map_test.txt","relative_path":"test_encrypt","clouds":[{"name":"阿里盘","path":"/我的备份/加密区"}],"cipher":"AES-256-CBC","created_at":"2026-10-02T07:15:35Z","sha256":"7223fe7f62fa7ed289f6e1762a620f47eded5d49cda5d71c03b4df321f271fc0","sizes":{"encrypted":32}}
 
 ## 3. GLOBAL_INDEX 契约（人读）
 
@@ -45,10 +46,11 @@
 
 - 加密：source ~/Privacy-Storage-Toolchain/termux-encrypt/encrypt_new.sh 然后 ea
 - PAR2：source /sdcard/termux_shared.sh 然后 par22
+- 云盘同步：setcloud 交互登记，内部调用 sync_clouds.py 写 index.jsonl
 
 ## 5. 不变式
 
 1. 临时文件写共享存储，不 mktemp 到 Termux 内部
 2. encrypted_name 用 basename
 3. 改脚本用 UTF-8 无 BOM
-4. 云盘字段当前仅在 GLOBAL_INDEX 第4、5列，尚未进 index.jsonl（待办）
+4. clouds 字段由 setcloud 同步写入，sync_clouds.py 负责去重与追加
