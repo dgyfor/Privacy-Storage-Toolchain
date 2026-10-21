@@ -30,3 +30,23 @@
 ````json
 {"id":"enc_1757900000_1234","encrypted_name":"enc_1757900000_1234.dat","original_name":"简历.pdf","relative_path":"work","encrypted_path":"/storage/emulated/0/.../enc_1757900000_1234.dat","clouds":[{"name":"测试盘","path":"/backup"},{"name":"光鸭盘","path":"/work"}],"sizes":{"encrypted":123456,"original":123000},"hashes":{"sha256_encrypted":"..."},"cipher":"AES-256-CBC","created_at":"2026-09-16T10:00:00+08:00","status":"local"}
 {"id":"enc_1757900000_5678","encrypted_name":"enc_1757900000_5678.dat","original_name":"笔记.txt","relative_path":"docs","encrypted_path":"/storage/emulated/0/.../enc_1757900000_5678.dat","clouds":[],"sizes":{"encrypted":456},"cipher":"AES-256-CBC","created_at":"2026-09-16T10:05:00+08:00","status":"local"}
+
+## ⚠️ V8 实现状态说明（2026-10-21）
+
+本 schema 是**目标契约**，当前 `encrypt_new.sh` 的实际写入字段如下：
+
+| 字段 | 状态 |
+|---|---|
+| `encrypted_name` | ✅ 已实现 |
+| `original_name` | ✅ 已实现 |
+| `relative_path` | ✅ 已实现 |
+| `clouds` | ✅ 已实现（setcloud 写入） |
+| `cipher` | ✅ 已实现（固定 "AES-256-CBC"） |
+| `created_at` | ✅ 已实现 |
+| `sha256` | ✅ 已实现（平铺顶层，未嵌入 `hashes`） |
+| `sizes.encrypted` | ✅ 已实现 |
+| `id` | ❌ 未实现（前端不强制依赖） |
+| `encrypted_path` | ❌ 未实现（容灾脚本暂未使用） |
+| `sizes.original` | ❌ 未实现 |
+| `hashes` | ❌ 未实现（sha256 平铺） |
+| `status` | ❌ 未实现 |

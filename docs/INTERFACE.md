@@ -4,6 +4,8 @@
 
 ## 1. 目录结构
 
+### 手机端（Termux / MT管理器）
+
 | 用途 | 路径 |
 |---|---|
 | 加密输出 | /storage/emulated/0/Documents/Encrypted_Vault/加密文件/ |
@@ -12,6 +14,20 @@
 | PAR2备份 | /storage/emulated/0/Documents/Encrypted_Vault/Par2_Backups/ |
 | 主索引(人读) | /storage/emulated/0/encrypted_index.txt |
 | JSONL索引(机读) | .../对照表/index.jsonl |
+
+### 电脑端（Windows Git Bash）
+
+| 用途 | 路径 |
+|---|---|
+| 项目根 | D:\Privacy-Storage-Toolchain |
+| 加密输出 | $BASE_DIR/test_vault/加密文件/ |
+| 解密输出 | $BASE_DIR/test_vault/解密输出/ |
+| 对照表 | $BASE_DIR/test_vault/对照表/ |
+| PAR2备份 | $BASE_DIR/test_vault/Par2_Backups/ |
+| 主索引(人读) | $BASE_DIR/test_vault/encrypted_index.txt |
+| JSONL索引(机读) | $BASE_DIR/test_vault/对照表/index.jsonl |
+
+脚本启动时通过 `[ -d "/storage/emulated/0" ]` 判断当前环境，自动切换两套路径。
 
 ## 2. index.jsonl 契约（机读）
 
@@ -44,13 +60,13 @@
 
 ## 4. 脚本接口
 
-- 加密：source ~/Privacy-Storage-Toolchain/termux-encrypt/encrypt_new.sh 然后 ea
-- PAR2：source /sdcard/termux_shared.sh 然后 par22
-- 云盘同步：setcloud 交互登记，内部调用 sync_clouds.py 写 index.jsonl
+- 加密：`source ~/Privacy-Storage-Toolchain/termux-encrypt/encrypt_new.sh` 然后 `ea`
+- PAR2：`source /sdcard/termux_shared.sh` 然后 `par22`
+- 云盘同步：`setcloud` 交互登记，纯 Bash 读写 `index.jsonl`（无 Python 依赖）
 
 ## 5. 不变式
 
 1. 临时文件写共享存储，不 mktemp 到 Termux 内部
 2. encrypted_name 用 basename
 3. 改脚本用 UTF-8 无 BOM
-4. clouds 字段由 setcloud 同步写入，sync_clouds.py 负责去重与追加
+4. clouds 字段由 setcloud 纯 Bash 写入，无外部脚本依赖
