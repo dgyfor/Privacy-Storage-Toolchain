@@ -36,6 +36,11 @@ def main():
                 fout.write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n")
             else:
                 fout.write(line)
+                
+    # 【关键修复】：这句必须放在 with 块的外面，和最外层的 with 平级
+    if updated == 0:
+        print("Warning: 没找到对应的记录，或云盘路径已存在，未发生更新", file=sys.stderr) 
+        
     os.replace(tmp, idx)
     print("sync_clouds: updated " + str(updated))
     return 0
