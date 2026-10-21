@@ -882,22 +882,12 @@
         }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
         @keyframes slideUp {
-            from {
-                transform: translateY(30px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
+            from { transform: translateY(30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
 
         ::-webkit-scrollbar {
@@ -916,7 +906,7 @@
     <input type="file" id="jsonlFile" accept=".jsonl" style="display:none" onchange="loadRealIndex(event)">
     <!-- 文件上传隐藏控件 -->
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
-    <!-- === 修改点1：添加 multiple 属性 === -->
+    <!-- 配置文件上传控件（支持多选） -->
     <input type="file" id="mapConfigFile" accept=".txt,.cfg" style="display:none" multiple onchange="handleConfigFile(event)">
 
     <!-- 主应用 -->
@@ -929,6 +919,7 @@
             </div>
             <div class="action-btns">
                 <button onclick="toggleSearch()" title="搜索">🔍</button>
+                <button id="lockBtn" onclick="toggleLock()" title="锁定/解锁" style="color:#22c55e;">🔓</button>
                 <button id="multiSelectBtn" onclick="toggleMultiSelectMode()" title="多选" style="color:#94a3b8;">☑️</button>
                 <button onclick="document.getElementById('jsonlFile').click()" title="导入索引">📥</button>
                 <button onclick="openAddModal()" title="添加">➕</button>
@@ -940,7 +931,7 @@
         <div class="more-menu" id="moreMenu">
             <button class="menu-item" onclick="openMapWizard(); toggleMoreMenu();"><span>🔗</span> 建立映射</button>
             <button class="menu-item" onclick="exportData(); toggleMoreMenu();"><span>📤</span> 导出备份</button>
-            <button class="menu-item" onclick="document.getElementById('importFile').click(); toggleMoreMenu();"><span>📥</span> 导入备份</button>
+            <button class="menu-item" onclick="document.getElementById('jsonlFile').click(); toggleMoreMenu();"><span>📥</span> 导入数据</button>
             <button class="menu-item" onclick="toggleSortMenu(); toggleMoreMenu();"><span>🔽</span> 排序</button>
         </div>
 
@@ -976,8 +967,27 @@
         <div class="menu-actions" id="menuActions"></div>
     </div>
 
-    
+    <div class="bottom-tabs" id="bottomTabs"></div>
+
     <!-- 弹窗 -->
+        <!-- 密码输入弹窗 -->
+    <div class="modal-overlay" id="passwordOverlay">
+        <div class="modal-box">
+            <h3 id="pwdTitle">🔑 请输入简令</h3>
+            <div class="field">
+                <label>自定义前缀（防止暴力破解，可留空）</label>
+                <input type="text" id="prefixInput" placeholder="例如：老王">
+            </div>
+            <div class="field">
+                <label>简令（密码）</label>
+                <input type="password" id="pwdInput" placeholder="输入您的密码...">
+            </div>
+            <div class="actions">
+                <button class="cancel" onclick="closePasswordModal()">取消</button>
+                <button class="confirm" id="pwdConfirmBtn">确认</button>
+            </div>
+        </div>
+    </div>
     <div class="modal-overlay" id="modalOverlay"><div class="modal-box"><h3 id="modalTitle">➕ 添加新项目</h3><div class="sub-location" id="modalLocation">📍 位置：根目录</div><div class="field" id="singleNameField"><label>名称</label><input type="text" id="modalNameInput" placeholder="输入名称..."></div><div class="field" id="sizeField" style="display:none;"><label>大小（可选，支持KB/MB/GB）</label><input type="text" id="modalSizeInput" placeholder="留空默认为0"></div><div class="field" id="batchField" style="display:none;"><label>批量名称（每行一个）</label><textarea id="modalBatchInput" placeholder="文件1&#10;文件2 2MB&#10;文件夹3"></textarea></div><div class="type-toggle" id="typeToggle"><button id="typeFolder" class="active" onclick="setType('folder')">📁 文件夹</button><button id="typeFile" onclick="setType('file')">📄 文件</button></div><div class="batch-toggle"><input type="checkbox" id="batchModeCheck" onchange="toggleBatchMode()"><label for="batchModeCheck">批量添加（多行）</label></div><div class="actions"><button class="cancel" onclick="closeModal()">取消</button><button class="confirm" id="modalConfirmBtn">确认</button></div></div></div>
 
     <div class="modal-overlay" id="mapWizardOverlay"><div class="modal-box map-wizard" style="width:420px;max-width:96%;padding:12px;"><h3 id="mapWizardTitle">🔗 建立映射</h3><div class="step-indicator" id="stepIndicator"><div class="step-dot active" data-step="0">模式</div><div class="step-dot" data-step="1">云盘</div><div class="step-dot" data-step="2">本地</div><div class="step-dot" data-step="3">目标</div><div class="step-dot" data-step="4">配对</div><div class="step-dot" data-step="5">确认</div></div><div class="step-content" id="mapWizardContent"></div><div class="nav-buttons" id="mapWizardNav"><button class="prev" onclick="mapWizardPrev()">上一步</button><button class="next" id="mapWizardNext" onclick="mapWizardNext()">下一步</button></div></div></div>
@@ -994,9 +1004,6 @@
         // ============================================================
         //  数据层
         // ============================================================
-                // ============================================================
-        //  数据层
-        // ============================================================
         // 废弃写死的 TREE_IDS，改为动态从 treeOrder 读取
         let data = {
             trees: {
@@ -1011,7 +1018,145 @@
             movingMode: false,
             sortKey: 'name-asc'
         };
+                // ============================================================
+        //  简令与端侧加解密 (Web Crypto API)
+        // ============================================================
+        let isEncryptedMode = false; // 当前是否处于锁定（密文）状态
+        let currentPassword = null;  // 保存当前输入的密码用于后续操作
 
+        // 工具：ArrayBuffer 转 Hex 字符串 (为了存入 JSON)
+        function buf2hex(buffer) {
+            return [...new Uint8Array(buffer)].map(x => x.toString(16).padStart(2, '0')).join('');
+        }
+
+        // 工具：Hex 字符串转 ArrayBuffer
+        function hex2buf(hexString) {
+            const bytes = new Uint8Array(hexString.length / 2);
+            for (let i = 0; i < hexString.length; i += 2) {
+                bytes[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
+            }
+            return bytes.buffer;
+        }
+
+        // 派生密钥 (将简令转为 AES-GCM 密钥)
+        async function deriveKey(password, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveKey"]
+            );
+            return window.crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+                keyMaterial,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        // 加密文本 (返回 JSON 对象)
+        async function encryptText(text, password) {
+            const enc = new TextEncoder();
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const key = await deriveKey(password, salt);
+            const encrypted = await window.crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv }, key, enc.encode(text)
+            );
+            return {
+                schema_version: "v1",
+                type: "encrypted_index",
+                salt: buf2hex(salt),
+                iv: buf2hex(iv),
+                ciphertext: buf2hex(encrypted)
+            };
+        }
+                // 控制密码弹窗的 Promise
+        let _pwdResolve = null;
+
+        // 打开密码弹窗，返回一个 Promise
+        function promptPassword(title = '🔑 请输入简令') {
+            return new Promise((resolve) => {
+                _pwdResolve = resolve;
+                document.getElementById('pwdTitle').textContent = title;
+                document.getElementById('prefixInput').value = ''; // 清空前缀
+                document.getElementById('pwdInput').value = '';    // 清空密码
+                document.getElementById('passwordOverlay').classList.add('visible');
+                setTimeout(() => document.getElementById('pwdInput').focus(), 100);
+            });
+        }
+
+        function closePasswordModal() {
+            document.getElementById('passwordOverlay').classList.remove('visible');
+            document.getElementById('prefixInput').value = '';
+            document.getElementById('pwdInput').value = '';
+            if (_pwdResolve) { _pwdResolve(null); _pwdResolve = null; }
+        }
+
+        // 确认密码输入（核心：拼装前缀与密码）
+        document.getElementById('pwdConfirmBtn').onclick = function() {
+            const prefix = document.getElementById('prefixInput').value.trim();
+            const pwd = document.getElementById('pwdInput').value;
+            if (!pwd) { showToast('简令不能为空', 'error'); return; }
+            
+            // 如果前缀不为空，拼接前缀和密码作为最终密钥
+            const finalPwd = prefix ? (prefix + pwd) : pwd;
+            
+            document.getElementById('passwordOverlay').classList.remove('visible');
+            if (_pwdResolve) { _pwdResolve(finalPwd); _pwdResolve = null; }
+        };
+
+        // 支持回车键确认
+        document.getElementById('pwdInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('pwdConfirmBtn').click();
+            }
+        });
+        document.getElementById('prefixInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('pwdConfirmBtn').click();
+            }
+        });        
+        // 切换锁的状态
+        function toggleLock() {
+            if (isEncryptedMode) {
+                // 当前是锁定状态，尝试解锁
+                promptPassword('🔓 解锁系统').then(pwd => {
+                    if (pwd === null) return;
+                    currentPassword = pwd;
+                    isEncryptedMode = false;
+                    document.getElementById('lockBtn').textContent = '🔓';
+                    document.getElementById('lockBtn').style.color = '#22c55e';
+                    showToast('✅ 系统已解锁，导出将默认明文', 'success');
+                });
+            } else {
+                // 当前是解锁状态，想要锁定
+                promptPassword('🔒 锁定系统（设置加密简令）').then(pwd => {
+                    if (pwd === null) return;
+                    currentPassword = pwd;
+                    isEncryptedMode = true;
+                    document.getElementById('lockBtn').textContent = '🔒';
+                    document.getElementById('lockBtn').style.color = '#ef4444';
+                    showToast('🔒 系统已锁定，导出将强制加密', 'info');
+                });
+            }
+        }
+        // 解密文本 (传入解析后的 JSON 对象)
+        async function decryptText(encObj, password) {
+            try {
+                const salt = hex2buf(encObj.salt);
+                const iv = hex2buf(encObj.iv);
+                const data = hex2buf(encObj.ciphertext);
+                const key = await deriveKey(password, salt);
+                const decrypted = await window.crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: iv }, key, data
+                );
+                return new TextDecoder().decode(decrypted);
+            } catch (e) {
+                throw new Error("密码错误或数据已损坏");
+            }
+        }
         // 动态获取所有盘 ID 列表
         function getTreeIds() {
             return (data.treeOrder && data.treeOrder.length) ? data.treeOrder.slice() : ['local'];
@@ -1045,19 +1190,51 @@
         let _toastTimer = null;
         let _searchVisible = false;
         let _navStack = [];
+
+        let wizardState = {
+            step: 0,
+            mode: null,
+            targetDisk: null,
+            localDirId: null,
+            targetDirId: null,
+            localSelected: [],
+            targetSelected: [],
+            pairs: [],
+            swapSource: null,
+            configContent: null,
+            configParsed: null,
+            uploadFileName: null,
+            uploadFileNames: [] 
+        };
+        let contextTarget = { treeId: null, nodeId: null, node: null };
+
+        const SORT_FUNCS = {
+            'name-asc': (a, b) => a.name.localeCompare(b.name),
+            'name-desc': (a, b) => b.name.localeCompare(a.name),
+            'time-desc': (a, b) => (b.createTime || 0) - (a.createTime || 0),
+            'size-desc': (a, b) => (b.size || 0) - (a.size || 0),
+            'size-asc': (a, b) => (a.size || 0) - (b.size || 0)
+        };
+        const SORT_LABELS = {
+            'name-asc': '名称 (A→Z)',
+            'name-desc': '名称 (Z→A)',
+            'time-desc': '最新优先',
+            'size-desc': '大小 (大→小)',
+            'size-asc': '大小 (小→大)'
+        };
+
         // ============================================================
         //  存储
         // ============================================================
         function saveState() { localStorage.setItem('tripleMapperV9', JSON.stringify(data)); }
 
         function loadState() {
-    // 禁用旧的 localStorage 读取，改为由用户上传 index.jsonl 触发
-    return false;
-}
+            return false;
+        }
         
         function fixNextId() {
             let maxNum = 0;
-            TREE_IDS.forEach(treeId => {
+            getTreeIds().forEach(treeId => {
                 const walk = (nodes) => {
                     nodes.forEach(n => {
                         const num = parseInt(String(n.id).replace(/\D/g, ''));
@@ -1072,55 +1249,6 @@
                 if (!isNaN(num) && num > maxNum) maxNum = num;
             });
             data.nextId = Math.max(data.nextId, maxNum + 1);
-        }
-
-        // ============================================================
-        //  示例数据
-        // ============================================================
-        function initDemo() {
-            data.trees.cloudA.nodes = [{
-                id: 'n5',
-                name: '红三',
-                type: 'folder',
-                size: 0,
-                createTime: Date.now() - 3600000 * 24 * 30,
-                children: [
-                    { id: 'n14', name: '文档9', type: 'folder', size: 0, createTime: Date.now() - 3600000 * 24 * 20,
-                        children: [] },
-                    { id: 'n15', name: '图片9', type: 'folder', size: 0, createTime: Date.now() - 3600000 * 24 * 15,
-                        children: [] },
-                    { id: 'n16', name: '视频9', type: 'folder', size: 0, createTime: Date.now() - 3600000 * 24 * 10,
-                        children: [] },
-                    { id: 'n17', name: '备份96', type: 'folder', size: 0, createTime: Date.now() - 3600000 * 24 * 5,
-                        children: [] }
-                ]
-            }];
-            data.trees.cloudA.currentDir = null;
-            data.trees.cloudB.nodes = [{ id: 'n4', name: 'photo_2026.jpg', type: 'file', size: 1048576,
-                createTime: Date.now() - 3600000 * 24 }];
-            data.trees.cloudB.currentDir = null;
-            data.trees.local.nodes = [{
-                id: 'n1',
-                name: '每日自拍',
-                type: 'folder',
-                size: 0,
-                createTime: Date.now() - 3600000 * 24 * 7,
-                children: [
-                    { id: 'n2', name: 'IMG_20260812.jpg', type: 'file', size: 2736783,
-                        createTime: Date.now() - 3600000 * 24 * 2 },
-                    { id: 'n3', name: 'IMG_20260811.jpg', type: 'file', size: 2663383,
-                        createTime: Date.now() - 3600000 * 24 * 3 }
-                ]
-            }];
-            data.trees.local.currentDir = null;
-            data.links = [];
-            data.nextId = 20;
-            data.currentTreeId = 'local';
-            data.selectedNodes = [];
-            data.multiMode = false;
-            data.movingMode = false;
-            data.sortKey = 'name-asc';
-            saveState();
         }
 
         // ============================================================
@@ -1184,8 +1312,7 @@
         function isNodeLinked(treeId, nodeId) { return findLinkedPairs(nodeId, treeId).length > 0; }
 
         function removeLinksByNodeIds(nodeIds) {
-            data.links = data.links.filter(link => !nodeIds.includes(link.source.nodeId) && !nodeIds.includes(link.target
-                .nodeId));
+            data.links = data.links.filter(link => !nodeIds.includes(link.source.nodeId) && !nodeIds.includes(link.target.nodeId));
         }
 
         function countNodes(nodes) {
@@ -1249,8 +1376,7 @@
         function formatDate(timestamp) {
             if (!timestamp) return '';
             const d = new Date(timestamp);
-            return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2,
-                '0');
+            return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
         }
 
         // ============================================================
@@ -1293,8 +1419,7 @@
         }
         document.addEventListener('click', function(e) {
             const menu = document.getElementById('sortMenu');
-            if (!e.target.closest('.sort-menu') && !e.target.closest('[onclick*="toggleSortMenu"]') && !e.target
-                .closest('.more-menu')) {
+            if (!e.target.closest('.sort-menu') && !e.target.closest('[onclick*="toggleSortMenu"]') && !e.target.closest('.more-menu')) {
                 menu.classList.remove('visible');
             }
         });
@@ -1368,8 +1493,7 @@
             _searchVisible = !_searchVisible;
             document.getElementById('searchWrap').style.display = _searchVisible ? 'block' : 'none';
             if (_searchVisible) document.getElementById('searchInput').focus();
-            else { document.getElementById('searchInput').value = '';
-                renderCurrentTree(); }
+            else { document.getElementById('searchInput').value = ''; renderCurrentTree(); }
         }
 
         // ============================================================
@@ -1400,7 +1524,7 @@
             const container = document.getElementById('treeContainer');
             const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
 
-            TREE_IDS.forEach(id => {
+            getTreeIds().forEach(id => {
                 const badge = document.getElementById('badge-' + id);
                 if (badge) badge.textContent = countNodes(data.trees[id].nodes);
             });
@@ -1423,14 +1547,12 @@
             }
 
             container.classList.toggle('multi-select-mode', data.multiMode);
-            document.getElementById('multiModeHint').style.display = (data.multiMode && !data.movingMode) ? 'inline-block' :
-                'none';
+            document.getElementById('multiModeHint').style.display = (data.multiMode && !data.movingMode) ? 'inline-block' : 'none';
             const moveHint = document.getElementById('moveModeHint');
             if (data.movingMode) {
                 moveHint.style.display = 'inline-block';
                 const path = getCurrentDirPath(treeId);
-                moveHint.innerHTML =
-                    `📦 移动模式 · 当前目标：<strong>${path.length > 0 ? path.map(n => n.name).join(' › ') : '根目录'}</strong>`;
+                moveHint.innerHTML = `📦 移动模式 · 当前目标：<strong>${path.length > 0 ? path.map(n => n.name).join(' › ') : '根目录'}</strong>`;
             } else moveHint.style.display = 'none';
 
             function renderItems(nodes) {
@@ -1445,10 +1567,7 @@
                     let displayName = node.name;
                     if (keyword && node.name.toLowerCase().includes(keyword)) {
                         const idx = node.name.toLowerCase().indexOf(keyword);
-                        displayName = node.name.substring(0, idx) +
-                            '<span class="highlight">' + node.name.substring(idx, idx + keyword.length) +
-                            '</span>' +
-                            node.name.substring(idx + keyword.length);
+                        displayName = node.name.substring(0, idx) + '<span class="highlight">' + node.name.substring(idx, idx + keyword.length) + '</span>' + node.name.substring(idx + keyword.length);
                     }
                     let metaText = '';
                     if (searchMode) {
@@ -1469,8 +1588,7 @@
                     const dotChecked = isSelected ? '✓' : '';
                     const dotClass = 'radio-dot ' + (isSelected ? 'checked' : '');
                     const icon = isFolder ? '📁' : '🖼️';
-                    const dataAttrs = `data-tree="${treeId}" data-node="${node.id}"` + (searchMode ?
-                        ` data-path="${encodeURIComponent(JSON.stringify(node.path))}"` : '');
+                    const dataAttrs = `data-tree="${treeId}" data-node="${node.id}"` + (searchMode ? ` data-path="${encodeURIComponent(JSON.stringify(node.path))}"` : '');
                     html += `<li><div class="${classes}" ${dataAttrs}>
                 <span class="${dotClass}">${dotChecked}</span>
                 <span class="icon">${icon}</span>
@@ -1511,8 +1629,7 @@
                         document.getElementById('searchWrap').style.display = 'none';
                         renderCurrentTree();
                         setTimeout(() => {
-                            const targetWrapper = document.querySelector(
-                                `.node-wrapper[data-tree="${treeId}"][data-node="${nodeId}"]`);
+                            const targetWrapper = document.querySelector(`.node-wrapper[data-tree="${treeId}"][data-node="${nodeId}"]`);
                             if (targetWrapper) {
                                 targetWrapper.classList.add('highlight-target');
                                 targetWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1532,42 +1649,43 @@
         // ============================================================
         let _longPressTimer = null;
         let _longPressTriggered = false;
-        let _touchStartX = 0,
-            _touchStartY = 0;
+        let _touchStartX = 0, _touchStartY = 0;
         let _touchNode = null;
 
         function initEvents() {
             const container = document.getElementById('treeContainer');
 
-            container.addEventListener('touchstart', function(e) {
-                const wrapper = e.target.closest('.node-wrapper');
-                if (!wrapper) { closeContextMenu(); return; }
-                const touch = e.touches[0];
-                _touchStartX = touch.clientX;
-                _touchStartY = touch.clientY;
-                _touchNode = wrapper;
-                _longPressTriggered = false;
-                if (_longPressTimer) clearTimeout(_longPressTimer);
-                _longPressTimer = setTimeout(() => {
-                    if (!_touchNode) return;
-                    const dx = touch.clientX - _touchStartX;
-                    const dy = touch.clientY - _touchStartY;
-                    if (Math.abs(dx) > 15 || Math.abs(dy) > 15) return;
-                    _longPressTriggered = true;
+                        let _lastTouchTime = 0;
+            container.addEventListener('touchend', function(e) {
+                if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+                if (_longPressTriggered) { _touchNode = null; return; }
+                if (_touchNode) {
                     const treeId = _touchNode.dataset.tree;
                     const nodeId = _touchNode.dataset.node;
-                    if (treeId && nodeId) {
-                        if (data.multiMode || data.movingMode) { showToast('当前模式下不支持此操作', 'info',
-                            600); return; }
-                        const node = getNode(treeId, nodeId);
-                        if (!node) { showToast('节点数据异常', 'error'); return; }
-                        if (navigator.vibrate) navigator.vibrate(20);
-                        showContextMenu(e.touches[0].clientX, e.touches[0].clientY, treeId, nodeId, node);
+                    const node = getNode(treeId, nodeId);
+                    if (node) {
+                        _lastTouchTime = Date.now(); // 记录触摸时间，防止和鼠标点击重复触发
+                        handleNodeClick(treeId, nodeId, node);
                     }
                     _touchNode = null;
-                }, 600);
+                }
+                _longPressTriggered = false;
             }, { passive: true });
 
+            // 补丁：兼容电脑端鼠标点击
+            container.addEventListener('click', function(e) {
+                const wrapper = e.target.closest('.node-wrapper');
+                if (!wrapper) return;
+                
+                // 如果是刚刚手机触摸触发的，就忽略这次点击
+                if (Date.now() - _lastTouchTime < 500) return; 
+                if (_longPressTriggered) { _longPressTriggered = false; return; }
+                
+                const treeId = wrapper.dataset.tree;
+                const nodeId = wrapper.dataset.node;
+                const node = getNode(treeId, nodeId);
+                if (node) handleNodeClick(treeId, nodeId, node);
+            });
             container.addEventListener('touchmove', function(e) {
                 if (!_touchNode) return;
                 if (e.touches.length !== 1) return;
@@ -1575,14 +1693,12 @@
                 const dx = touch.clientX - _touchStartX;
                 const dy = touch.clientY - _touchStartY;
                 if (Math.abs(dx) > 20 || Math.abs(dy) > 20) {
-                    if (_longPressTimer) { clearTimeout(_longPressTimer);
-                        _longPressTimer = null; }
+                    if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
                     _touchNode = null;
                 }
                 if (dx < -50 && Math.abs(dy) < 30 && !_longPressTriggered) {
                     e.preventDefault();
-                    if (_longPressTimer) { clearTimeout(_longPressTimer);
-                        _longPressTimer = null; }
+                    if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
                     const treeId = _touchNode.dataset.tree;
                     const nodeId = _touchNode.dataset.node;
                     const node = getNode(treeId, nodeId);
@@ -1598,8 +1714,7 @@
             }, { passive: false });
 
             container.addEventListener('touchend', function(e) {
-                if (_longPressTimer) { clearTimeout(_longPressTimer);
-                    _longPressTimer = null; }
+                if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
                 if (_longPressTriggered) { _touchNode = null; return; }
                 if (_touchNode) {
                     const treeId = _touchNode.dataset.tree;
@@ -1627,25 +1742,44 @@
                 if (!e.target.closest('.context-menu')) closeContextMenu();
             });
 
-            document.querySelectorAll('.bottom-tabs .tab').forEach(tab => {
-                tab.addEventListener('click', function() {
-                    if (data.movingMode) { showToast('请先完成移动操作', 'info'); return; }
-                    if (data.multiMode) exitMultiSelect();
-                    switchTree(this.dataset.tree);
-                });
+            document.getElementById('bottomTabs').addEventListener('click', function(e) {
+                const tab = e.target.closest('.tab');
+                if (!tab) return;
+                if (data.movingMode) { showToast('请先完成移动操作', 'info'); return; }
+                if (data.multiMode) exitMultiSelect();
+                switchTree(tab.dataset.tree);
             });
 
-            document.getElementById('modalOverlay').addEventListener('click', function(e) { if (e.target === this)
-                    closeModal(); });
-            document.getElementById('mapWizardOverlay').addEventListener('click', function(e) { if (e.target === this)
-                    closeMapWizard(); });
-
+            document.getElementById('modalOverlay').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+            document.getElementById('mapWizardOverlay').addEventListener('click', function(e) { if (e.target === this) closeMapWizard(); });
+                        // 拖拽导入支持
+            const dropZone = document.body;
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault(); // 阻止浏览器默认打开文件的行为
+                dropZone.style.opacity = '0.7'; // 简单的视觉反馈
+            });
+            dropZone.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dropZone.style.opacity = '1';
+            });
+            dropZone.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                dropZone.style.opacity = '1';
+                
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const file = e.dataTransfer.files[0];
+                    // 简单的文件类型校验
+                    if (file.name.endsWith('.json') || file.name.endsWith('.jsonl') || file.name.endsWith('.txt')) {
+                        await processImportFile(file);
+                    } else {
+                        showToast('仅支持拖入 .json 或 .jsonl 文件', 'error');
+                    }
+                }
+            });
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape') {
-                    if (document.getElementById('mapWizardOverlay').classList.contains('visible'))
-                        closeMapWizard();
-                    else if (document.getElementById('modalOverlay').classList.contains('visible'))
-                        closeModal();
+                    if (document.getElementById('mapWizardOverlay').classList.contains('visible')) closeMapWizard();
+                    else if (document.getElementById('modalOverlay').classList.contains('visible')) closeModal();
                     else if (data.movingMode) exitMoveMode();
                     else if (data.multiMode) exitMultiSelect();
                     else closeContextMenu();
@@ -1658,16 +1792,13 @@
         // ============================================================
         function handleNodeClick(treeId, nodeId, node) {
             if (data.movingMode) {
-                if (node.type === 'folder') { setCurrentDir(treeId, nodeId);
-                    renderCurrentTree();
-                    showToast('📂 进入 ' + node.name, 'info', 600); } else showToast('移动模式下只能选择文件夹', 'info',
-                    800);
+                if (node.type === 'folder') { setCurrentDir(treeId, nodeId); renderCurrentTree(); showToast('📂 进入 ' + node.name, 'info', 600); } 
+                else showToast('移动模式下只能选择文件夹', 'info', 800);
                 return;
             }
             if (data.multiMode) { toggleSelectOnly(treeId, nodeId); return; }
-            if (node.type === 'folder') { setCurrentDir(treeId, nodeId);
-                renderCurrentTree();
-                showToast('📂 进入 ' + node.name, 'info', 1000); } else showToast('📄 ' + node.name, 'info', 1200);
+            if (node.type === 'folder') { setCurrentDir(treeId, nodeId); renderCurrentTree(); showToast('📂 进入 ' + node.name, 'info', 1000); } 
+            else showToast('📄 ' + node.name, 'info', 1200);
         }
 
         // ============================================================
@@ -1685,8 +1816,7 @@
         function toggleSelectOnly(treeId, nodeId) {
             if (data.movingMode) return;
             const idx = data.selectedNodes.findIndex(s => s.treeId === treeId && s.nodeId === nodeId);
-            if (idx > -1) { data.selectedNodes.splice(idx, 1);
-                renderCurrentTree(); return; }
+            if (idx > -1) { data.selectedNodes.splice(idx, 1); renderCurrentTree(); return; }
             data.selectedNodes.push({ treeId, nodeId });
             renderCurrentTree();
         }
@@ -1785,8 +1915,8 @@
             };
             removeFromTree(tree.nodes);
             if (movedItems.length === 0) { showToast('未找到要移动的项目', 'error'); return; }
-            if (targetNode) { if (!targetNode.children) targetNode.children = [];
-                targetNode.children.push(...movedItems); } else tree.nodes.push(...movedItems);
+            if (targetNode) { if (!targetNode.children) targetNode.children = []; targetNode.children.push(...movedItems); } 
+            else tree.nodes.push(...movedItems);
             if (tree.currentDir && selectedNodeIds.includes(tree.currentDir)) tree.currentDir = null;
             data.movingMode = false;
             data.multiMode = false;
@@ -1808,8 +1938,7 @@
             if (data.movingMode) {
                 menu.classList.add('visible');
                 info.innerHTML = '<strong>移动模式</strong>';
-                actions.innerHTML =
-                    '<button class="primary" onclick="confirmMove()">✅ 确认移动</button><button onclick="exitMoveMode()" style="background:#334155;">✕ 取消</button>';
+                actions.innerHTML = '<button class="primary" onclick="confirmMove()">✅ 确认移动</button><button onclick="exitMoveMode()" style="background:#334155;">✕ 取消</button>';
                 return;
             }
             if (!data.multiMode || data.selectedNodes.length === 0) { menu.classList.remove('visible'); return; }
@@ -1999,8 +2128,7 @@
             contextTarget.node = node;
             const jumpItem = document.getElementById('menuJumpToLink');
             jumpItem.style.display = isNodeLinked(treeId, nodeId) ? 'flex' : 'none';
-            const w = 200,
-                h = 100;
+            const w = 200, h = 100;
             let left = Math.min(x, window.innerWidth - w - 8);
             let top = Math.min(y, window.innerHeight - h - 8);
             left = Math.max(8, left);
@@ -2027,8 +2155,7 @@
                 if (!node) { showToast('节点不存在', 'error'); return; }
                 const fullPath = getFullPath(savedTreeId, savedNodeId);
                 if (fullPath) {
-                    navigator.clipboard.writeText(fullPath).then(() => showToast('✅ 已复制路径: ' + fullPath,
-                        'success'))
+                    navigator.clipboard.writeText(fullPath).then(() => showToast('✅ 已复制路径: ' + fullPath, 'success'))
                         .catch(() => {
                             const ta = document.createElement('textarea');
                             ta.value = fullPath;
@@ -2044,8 +2171,7 @@
             if (savedNode) {
                 const fullPath = getFullPath(savedTreeId, savedNodeId);
                 if (fullPath) {
-                    navigator.clipboard.writeText(fullPath).then(() => showToast('✅ 已复制路径: ' + fullPath,
-                        'success'))
+                    navigator.clipboard.writeText(fullPath).then(() => showToast('✅ 已复制路径: ' + fullPath, 'success'))
                         .catch(() => {
                             const ta = document.createElement('textarea');
                             ta.value = fullPath;
@@ -2116,11 +2242,8 @@
             setCurrentDir(otherTreeId, targetDirId);
             renderCurrentTree();
             setTimeout(() => {
-                const wrapper = document.querySelector(
-                    `.node-wrapper[data-tree="${otherTreeId}"][data-node="${otherNodeId}"]`);
-                if (wrapper) { wrapper.classList.add('highlight-target');
-                    wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    setTimeout(() => wrapper.classList.remove('highlight-target'), 3000); }
+                const wrapper = document.querySelector(`.node-wrapper[data-tree="${otherTreeId}"][data-node="${otherNodeId}"]`);
+                if (wrapper) { wrapper.classList.add('highlight-target'); wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => wrapper.classList.remove('highlight-target'), 3000); }
             }, 100);
             showToast('🔗 已跳转到 ' + targetNode.name, 'info', 1500);
             updateBackBtn();
@@ -2133,11 +2256,8 @@
             setCurrentDir(state.treeId, state.dirId);
             renderCurrentTree();
             setTimeout(() => {
-                const wrapper = document.querySelector(
-                    `.node-wrapper[data-tree="${state.treeId}"][data-node="${state.nodeId}"]`);
-                if (wrapper) { wrapper.classList.add('highlight-target');
-                    wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    setTimeout(() => wrapper.classList.remove('highlight-target'), 3000); }
+                const wrapper = document.querySelector(`.node-wrapper[data-tree="${state.treeId}"][data-node="${state.nodeId}"]`);
+                if (wrapper) { wrapper.classList.add('highlight-target'); wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => wrapper.classList.remove('highlight-target'), 3000); }
             }, 100);
             showToast('↩️ 已返回', 'info', 1000);
             updateBackBtn();
@@ -2164,10 +2284,19 @@
             saveState();
         }
 
+        function renderTabs() {
+            const container = document.getElementById('bottomTabs');
+            if (!container) return;
+            container.innerHTML = getTreeIds().map(id => {
+                const t = data.trees[id];
+                if (!t) return '';
+                const active = id === data.currentTreeId ? ' active' : '';
+                return `<button class="tab${active}" data-tree="${id}">${t.label} <span class="tab-badge" id="badge-${id}">0</span></button>`;
+            }).join('');
+        }
+
         function updateTabs() {
-            document.querySelectorAll('.bottom-tabs .tab').forEach(tab => {
-                tab.classList.toggle('active', tab.dataset.tree === data.currentTreeId);
-            });
+            renderTabs();
         }
 
         // ============================================================
@@ -2184,12 +2313,12 @@
             wizardState.pairs = [];
             wizardState.swapSource = null;
             wizardState.configContent = null;
-            wizardState.uploadFiles = []; // 新增，存储 File 对象
-wizardState.uploadFileNames = []; // 仅存名字用于显示
+            wizardState.uploadFiles = [];
+            wizardState.uploadFileNames = [];
             wizardState.configParsed = null;
             wizardState.uploadFileName = null;
-            wizardState.uploadFileNames = []; // 重置
-            const options = TREE_IDS.filter(id => id !== 'local');
+            wizardState.uploadFileNames = [];
+            const options = getTreeIds().filter(id => id !== 'local');
             wizardState.targetDisk = options.length > 0 ? options[0] : null;
             if (wizardState.targetDisk) wizardState.targetDirId = getCurrentDir(wizardState.targetDisk);
             renderWizardStep();
@@ -2207,35 +2336,20 @@ wizardState.uploadFileNames = []; // 仅存名字用于显示
             const content = document.getElementById('mapWizardContent');
             const nextBtn = document.getElementById('mapWizardNext');
             const prevBtn = document.querySelector('.map-wizard .prev');
-            document.querySelectorAll('.step-indicator .step-dot').forEach(dot => { dot.classList.toggle('active',
-                    parseInt(dot.dataset.step) === step); });
-            document.getElementById('mapWizardTitle').textContent = step === 0 ? '🔗 建立映射' : (step === 5 ?
-                '📋 预览确认' : '🔗 映射 (' + step + '/5)');
+            document.querySelectorAll('.step-indicator .step-dot').forEach(dot => { dot.classList.toggle('active', parseInt(dot.dataset.step) === step); });
+            document.getElementById('mapWizardTitle').textContent = step === 0 ? '🔗 建立映射' : (step === 5 ? '📋 预览确认' : '🔗 映射 (' + step + '/5)');
             prevBtn.style.display = step === 0 ? 'none' : 'block';
             nextBtn.textContent = step === 5 ? '✅ 确认建立' : '下一步';
             nextBtn.disabled = false;
             let html = '';
             switch (step) {
-                case 0:
-                    html = renderModeSelection();
-                    break;
-                case 1:
-                    html = renderDiskSelection();
-                    break;
-                case 2:
-                    html = renderFileSelection('local', '选择本地盘文件');
-                    break;
-                case 3:
-                    html = renderFileSelection('target', '选择映射盘文件');
-                    break;
-                case 4:
-                    html = renderPairConfig();
-                    break;
-                case 5:
-                    html = renderPreview();
-                    break;
-                default:
-                    html = '<div>未知步骤</div>';
+                case 0: html = renderModeSelection(); break;
+                case 1: html = renderDiskSelection(); break;
+                case 2: html = renderFileSelection('local', '选择本地盘文件'); break;
+                case 3: html = renderFileSelection('target', '选择映射盘文件'); break;
+                case 4: html = renderPairConfig(); break;
+                case 5: html = renderPreview(); break;
+                default: html = '<div>未知步骤</div>';
             }
             content.innerHTML = html;
             if (step === 0 && wizardState.mode) {
@@ -2275,62 +2389,55 @@ wizardState.uploadFileNames = []; // 仅存名字用于显示
 
         function renderDiskSelection() {
             if (wizardState.mode === 'upload') return renderUploadConfig();
-            const options = TREE_IDS.filter(id => id !== 'local');
+            const options = getTreeIds().filter(id => id !== 'local');
             let html = '<div><div style="font-weight:500;margin-bottom:4px;font-size:13px;">选择目标云盘</div><div class="disk-selector">';
             options.forEach(id => {
                 const label = data.trees[id]?.label || id;
                 const active = wizardState.targetDisk === id ? 'active' : '';
                 html += `<div class="disk-option ${active}" onclick="selectTargetDisk('${id}')">${label}</div>`;
             });
-            html +=
-                '</div><div class="hint-text">映射将建立在 <strong>本地盘</strong> 与所选云盘之间</div><div style="margin-top:4px;font-size:11px;color:#94a3b8;">💡 后续步骤将分别从本地盘和目标盘选择文件</div></div>';
+            html += '</div><div class="hint-text">映射将建立在 <strong>本地盘</strong> 与所选云盘之间</div><div style="margin-top:4px;font-size:11px;color:#94a3b8;">💡 后续步骤将分别从本地盘和目标盘选择文件</div></div>';
             return html;
         }
 
         function selectTargetDisk(id) {
             wizardState.targetDisk = id;
             wizardState.targetDirId = getCurrentDir(id);
-            document.querySelectorAll('.disk-option').forEach(el => { el.classList.toggle('active', el.textContent
-                    .includes(data.trees[id]?.label || id)); });
+            document.querySelectorAll('.disk-option').forEach(el => { el.classList.toggle('active', el.textContent.includes(data.trees[id]?.label || id)); });
             document.getElementById('mapWizardNext').disabled = false;
         }
 
-        // === 修改点3：renderUploadConfig 支持多文件显示 ===
-function renderUploadConfig() {
-    const files = wizardState.uploadFiles || [];
-    const fileCount = files.length;
-    let fileDisplay = '';
-    if (fileCount > 0) {
-        const list = files.map((f, idx) => 
-            `<span style="display:inline-block;background:#1e3a8a;padding:0 6px;border-radius:4px;margin:1px 2px;font-size:10px;">${f.name}</span>`
-        ).join('');
-        fileDisplay = `<div class="file-names">已选 ${fileCount} 个文件：${list}</div>`;
-    }
+        function renderUploadConfig() {
+            const files = wizardState.uploadFiles || [];
+            const fileCount = files.length;
+            let fileDisplay = '';
+            if (fileCount > 0) {
+                const list = files.map((f, idx) => `<span style="display:inline-block;background:#1e3a8a;padding:0 6px;border-radius:4px;margin:1px 2px;font-size:10px;">${f.name}</span>`).join('');
+                fileDisplay = `<div class="file-names">已选 ${fileCount} 个文件：${list}</div>`;
+            }
 
-    return `<div>
-        <div style="font-weight:500;margin-bottom:4px;font-size:13px;">上传映射配置文件</div>
-        <div class="upload-area" onclick="document.getElementById('mapConfigFile').click()">
-            <div class="upload-icon">📤</div>
-            <div class="upload-hint">点击添加配置文件（每次选一个，可多次添加）</div>
-            ${fileDisplay}
-        </div>
-        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
-            格式：第一行 盘名1, 盘名2 &nbsp;|&nbsp; 第二行 路径1, 路径2 &nbsp;|&nbsp; 第三行起 文件1 ↔ 文件2
-        </div>
-        ${wizardState.configParsed ? '<div style="margin-top:6px;padding:4px 8px;background:#0f172a;border-radius:6px;font-size:12px;color:#86efac;">✅ 解析成功，共 '+wizardState.configParsed.mappings.length+' 对映射</div>' : ''}
-        <div style="margin-top:8px;display:flex;gap:6px;">
-            <button onclick="parseAllUploadedFiles()" style="flex:1;padding:6px;border:none;border-radius:30px;background:#3b82f6;color:white;font-weight:600;font-size:12px;cursor:pointer;">🔍 解析并继续</button>
-            <button onclick="clearUploadedFiles()" style="padding:6px 12px;border:none;border-radius:30px;background:#334155;color:#e2e8f0;font-size:12px;cursor:pointer;">清空</button>
-        </div>
-    </div>`;
-}
+            return `<div>
+                <div style="font-weight:500;margin-bottom:4px;font-size:13px;">上传映射配置文件</div>
+                <div class="upload-area" onclick="document.getElementById('mapConfigFile').click()">
+                    <div class="upload-icon">📤</div>
+                    <div class="upload-hint">点击添加配置文件（每次选一个，可多次添加）</div>
+                    ${fileDisplay}
+                </div>
+                <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
+                    格式：第一行 盘名1, 盘名2 &nbsp;|&nbsp; 第二行 路径1, 路径2 &nbsp;|&nbsp; 第三行起 文件1 ↔ 文件2
+                </div>
+                ${wizardState.configParsed ? '<div style="margin-top:6px;padding:4px 8px;background:#0f172a;border-radius:6px;font-size:12px;color:#86efac;">✅ 解析成功，共 '+wizardState.configParsed.mappings.length+' 对映射</div>' : ''}
+                <div style="margin-top:8px;display:flex;gap:6px;">
+                    <button onclick="parseAllUploadedFiles()" style="flex:1;padding:6px;border:none;border-radius:30px;background:#3b82f6;color:white;font-weight:600;font-size:12px;cursor:pointer;">🔍 解析并继续</button>
+                    <button onclick="clearUploadedFiles()" style="padding:6px 12px;border:none;border-radius:30px;background:#334155;color:#e2e8f0;font-size:12px;cursor:pointer;">清空</button>
+                </div>
+            </div>`;
+        }
 
-        // === 修改点4：handleConfigFile 重写支持多文件 ===
         async function handleConfigFile(event) {
             const files = event.target.files;
             if (!files || files.length === 0) return;
 
-            // 重置状态
             wizardState.uploadFileNames = [];
             wizardState.configParsed = null;
 
@@ -2354,7 +2461,6 @@ function renderUploadConfig() {
                         continue;
                     }
 
-                    // 解析映射
                     let mappings = [];
                     for (let j = 2; j < lines.length; j++) {
                         const line = lines[j];
@@ -2408,8 +2514,7 @@ function renderUploadConfig() {
                         baseCloudPath = cloudPath;
                         firstFile = false;
                     } else {
-                        if (disk1 !== baseDisk1 || disk2 !== baseDisk2 ||
-                            localPath !== baseLocalPath || cloudPath !== baseCloudPath) {
+                        if (disk1 !== baseDisk1 || disk2 !== baseDisk2 || localPath !== baseLocalPath || cloudPath !== baseCloudPath) {
                             showToast('⚠️ 文件 ' + file.name + ' 的盘名或路径与第一个文件不一致，将忽略其盘名和路径', 'info');
                         }
                     }
@@ -2435,7 +2540,6 @@ function renderUploadConfig() {
                 return;
             }
 
-            // 去重（基于 from→to）
             const uniqueMappings = [];
             const seen = new Set();
             allMappings.forEach(m => {
@@ -2448,18 +2552,13 @@ function renderUploadConfig() {
 
             const dupCount = allMappings.length - uniqueMappings.length;
 
-            // 应用配置
             const localTreeId = 'local';
-            let cloudTreeId = 'cloudA';
-            if (baseDisk2.includes('光鸭') || baseDisk2.includes('光鸭盘')) {
-                cloudTreeId = 'cloudB';
-            }
+            const cloudTreeId = ensureCloudTree(baseDisk2);
 
             const cleanPath = (p) => p.replace(/^\/+|\/+$/g, '').split('/').filter(s => s.length > 0);
             const localDirs = cleanPath(baseLocalPath);
             const cloudDirs = cleanPath(baseCloudPath);
 
-            // 内部辅助函数
             function getOrCreateDir(treeId, dirs) {
                 let tree = data.trees[treeId];
                 if (!tree) return null;
@@ -2468,14 +2567,7 @@ function renderUploadConfig() {
                 for (let d of dirs) {
                     let found = currentNodes.find(n => n.name === d && n.type === 'folder');
                     if (!found) {
-                        const newDir = {
-                            id: 'n' + (data.nextId++),
-                            name: d,
-                            type: 'folder',
-                            size: 0,
-                            createTime: Date.now(),
-                            children: []
-                        };
+                        const newDir = { id: 'n' + (data.nextId++), name: d, type: 'folder', size: 0, createTime: Date.now(), children: [] };
                         currentNodes.push(newDir);
                         found = newDir;
                     }
@@ -2495,13 +2587,7 @@ function renderUploadConfig() {
                     if (fileSize !== undefined && fileSize > 0) existing.size = fileSize;
                     return existing;
                 }
-                const newFile = {
-                    id: 'n' + (data.nextId++),
-                    name: fileName,
-                    type: 'file',
-                    size: fileSize || 0,
-                    createTime: Date.now()
-                };
+                const newFile = { id: 'n' + (data.nextId++), name: fileName, type: 'file', size: fileSize || 0, createTime: Date.now() };
                 nodes.push(newFile);
                 return newFile;
             }
@@ -2514,10 +2600,8 @@ function renderUploadConfig() {
                 const cloudFile = getOrCreateFile(cloudTreeId, cloudParent, m.to, 0);
                 if (!localFile || !cloudFile) continue;
                 const exists = data.links.some(link =>
-                    (link.source.treeId === localTreeId && link.source.nodeId === localFile.id &&
-                        link.target.treeId === cloudTreeId && link.target.nodeId === cloudFile.id) ||
-                    (link.source.treeId === cloudTreeId && link.source.nodeId === cloudFile.id &&
-                        link.target.treeId === localTreeId && link.target.nodeId === localFile.id)
+                    (link.source.treeId === localTreeId && link.source.nodeId === localFile.id && link.target.treeId === cloudTreeId && link.target.nodeId === cloudFile.id) ||
+                    (link.source.treeId === cloudTreeId && link.source.nodeId === cloudFile.id && link.target.treeId === localTreeId && link.target.nodeId === localFile.id)
                 );
                 if (!exists) {
                     data.links.push({
@@ -2529,7 +2613,6 @@ function renderUploadConfig() {
                 }
             }
 
-            // 存储解析结果供预览
             wizardState.configParsed = {
                 disk1: baseDisk1,
                 disk2: baseDisk2,
@@ -2546,7 +2629,6 @@ function renderUploadConfig() {
             if (files.length > 1) msg += '，合并 ' + files.length + ' 个文件';
             showToast(msg, 'success');
 
-            // 重新渲染向导步骤以显示最新状态
             renderWizardStep();
             event.target.value = '';
         }
@@ -2572,11 +2654,9 @@ function renderUploadConfig() {
                 <span style="font-size:11px;color:#94a3b8;">已选 ${selected.length} 个</span>
             </div>`;
             const path2 = getCurrentDirPath(treeId);
-            html2 +=
-                `<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📂 ${path2.length > 0 ? path2.map(n => n.name).join(' › ') : '根目录'}</div>`;
+            html2 += `<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">📂 ${path2.length > 0 ? path2.map(n => n.name).join(' › ') : '根目录'}</div>`;
             if (dirId) {
-                html2 +=
-                    `<button onclick="navigateWizardDir('${role}', null)" style="padding:2px 10px;border:none;border-radius:12px;background:#334155;color:#e2e8f0;font-size:11px;cursor:pointer;margin-bottom:4px;">⬆ 上级</button>`;
+                html2 += `<button onclick="navigateWizardDir('${role}', null)" style="padding:2px 10px;border:none;border-radius:12px;background:#334155;color:#e2e8f0;font-size:11px;cursor:pointer;margin-bottom:4px;">⬆ 上级</button>`;
             }
             html2 += `<div class="file-list">`;
             if (sorted.length === 0) {
@@ -2586,11 +2666,8 @@ function renderUploadConfig() {
                     const isSelected = selected.includes(node.id);
                     const isFolder = node.type === 'folder';
                     const icon = isFolder ? '📁' : '🖼️';
-                    const meta = isFolder ? (node.children ? node.children.length : 0) + ' 项' : formatSize(node
-                        .size || 0);
-                    const clickHandler = isFolder ?
-                        `onclick="navigateWizardDir('${role}', '${node.id}')"` :
-                        `onclick="toggleFileSelection('${role}', '${node.id}')"`;
+                    const meta = isFolder ? (node.children ? node.children.length : 0) + ' 项' : formatSize(node.size || 0);
+                    const clickHandler = isFolder ? `onclick="navigateWizardDir('${role}', '${node.id}')"` : `onclick="toggleFileSelection('${role}', '${node.id}')"`;
                     html2 += `<div class="file-item" data-node-id="${node.id}" ${clickHandler}>
                         <div class="check-box ${isSelected ? 'checked' : ''}">${isSelected ? '✓' : ''}</div>
                         <span class="file-icon">${icon}</span>
@@ -2704,8 +2781,7 @@ function renderUploadConfig() {
                 </div>`;
             });
             html += `</div>`;
-            html +=
-                `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">💡 点击左侧或右侧可互换配对顺序</div>`;
+            html += `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">💡 点击左侧或右侧可互换配对顺序</div>`;
             wizardState.pairs = pairs;
             return html;
         }
@@ -2745,8 +2821,7 @@ function renderUploadConfig() {
                 </div>`;
             });
             html += `</div>`;
-            html +=
-                `<div style="margin-top:4px;font-size:11px;color:#94a3b8;">即将建立 ${pairs.length} 对映射关系</div>`;
+            html += `<div style="margin-top:4px;font-size:11px;color:#94a3b8;">即将建立 ${pairs.length} 对映射关系</div>`;
             return html;
         }
 
@@ -2762,50 +2837,24 @@ function renderUploadConfig() {
 
         function mapWizardNext() {
             const step = wizardState.step;
-            if (step === 0 && !wizardState.mode) {
-                showToast('请选择一种模式', 'error');
-                return;
-            }
-            if (step === 1 && wizardState.mode === 'manual' && !wizardState.targetDisk) {
-                showToast('请选择目标云盘', 'error');
-                return;
-            }
-            if (step === 2) {
-                if (wizardState.localSelected.length === 0) {
-                    showToast('请至少选择一个本地文件', 'error');
-                    return;
-                }
-            }
-            if (step === 3) {
-                if (wizardState.targetSelected.length === 0) {
-                    showToast('请至少选择一个目标盘文件', 'error');
-                    return;
-                }
-            }
+            if (step === 0 && !wizardState.mode) { showToast('请选择一种模式', 'error'); return; }
+            if (step === 1 && wizardState.mode === 'manual' && !wizardState.targetDisk) { showToast('请选择目标云盘', 'error'); return; }
+            if (step === 2) { if (wizardState.localSelected.length === 0) { showToast('请至少选择一个本地文件', 'error'); return; } }
+            if (step === 3) { if (wizardState.targetSelected.length === 0) { showToast('请至少选择一个目标盘文件', 'error'); return; } }
             if (step === 4) {
                 const localNodes = wizardState.localSelected.map(id => getNode('local', id)).filter(Boolean);
-                const targetNodes = wizardState.targetSelected.map(id => getNode(wizardState.targetDisk, id)).filter(
-                Boolean);
+                const targetNodes = wizardState.targetSelected.map(id => getNode(wizardState.targetDisk, id)).filter(Boolean);
                 const pairs = [];
                 const maxLen = Math.min(localNodes.length, targetNodes.length);
                 for (let i = 0; i < maxLen; i++) {
                     pairs.push({ left: localNodes[i], right: targetNodes[i] });
                 }
-                if (pairs.length === 0) {
-                    showToast('没有可配对的项', 'error');
-                    return;
-                }
+                if (pairs.length === 0) { showToast('没有可配对的项', 'error'); return; }
                 wizardState.pairs = pairs;
             }
-            if (step === 5) {
-                confirmMapWizard();
-                return;
-            }
+            if (step === 5) { confirmMapWizard(); return; }
             if (step === 1 && wizardState.mode === 'upload') {
-                if (!wizardState.configParsed) {
-                    showToast('请上传并解析配置文件', 'error');
-                    return;
-                }
+                if (!wizardState.configParsed) { showToast('请上传并解析配置文件', 'error'); return; }
                 closeMapWizard();
                 return;
             }
@@ -2817,23 +2866,15 @@ function renderUploadConfig() {
 
         function confirmMapWizard() {
             const pairs = wizardState.pairs;
-            if (pairs.length === 0) {
-                showToast('没有映射关系可建立', 'error');
-                return;
-            }
+            if (pairs.length === 0) { showToast('没有映射关系可建立', 'error'); return; }
             const targetTreeId = wizardState.targetDisk;
-            if (!targetTreeId) {
-                showToast('目标云盘无效', 'error');
-                return;
-            }
+            if (!targetTreeId) { showToast('目标云盘无效', 'error'); return; }
             let added = 0;
             pairs.forEach(pair => {
                 if (!pair.left || !pair.right) return;
                 const exists = data.links.some(link =>
-                    (link.source.treeId === 'local' && link.source.nodeId === pair.left.id &&
-                        link.target.treeId === targetTreeId && link.target.nodeId === pair.right.id) ||
-                    (link.source.treeId === targetTreeId && link.source.nodeId === pair.right.id &&
-                        link.target.treeId === 'local' && link.target.nodeId === pair.left.id)
+                    (link.source.treeId === 'local' && link.source.nodeId === pair.left.id && link.target.treeId === targetTreeId && link.target.nodeId === pair.right.id) ||
+                    (link.source.treeId === targetTreeId && link.source.nodeId === pair.right.id && link.target.treeId === 'local' && link.target.nodeId === pair.left.id)
                 );
                 if (!exists) {
                     data.links.push({
@@ -2849,23 +2890,50 @@ function renderUploadConfig() {
             closeMapWizard();
             showToast('✅ 成功建立 ' + added + ' 个映射', 'success');
         }
-
-        // ============================================================
+        
+                // ============================================================
         //  导入导出（带确认）
         // ============================================================
-        function exportData() {
-            if (!confirm('确定要导出当前数据为备份文件吗？')) {
-                return;
+                // 导出数据
+        async function exportData() {
+            // 如果当前没有密码（比如刚打开页面没上锁），强制让他设置并上锁
+            if (!currentPassword) {
+                const pwd = await promptPassword('🔑 设置导出文件的简令（密码）');
+                if (!pwd) return;
+                currentPassword = pwd;
+                isEncryptedMode = true;
+                document.getElementById('lockBtn').textContent = '🔒';
+                document.getElementById('lockBtn').style.color = '#ef4444';
             }
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+
+            const confirmMsg = isEncryptedMode ? 
+                '确定要导出【加密文件】吗？（需要正确的简令才能打开）' : 
+                '确定要导出【明文备份】吗？（为了安全，建议使用加密导出）';
+                
+            if (!confirm(confirmMsg)) return;
+
+            let fileContent = '';
+            let fileName = '';
+
+            if (isEncryptedMode) {
+                showToast('正在加密...', 'info');
+                const jsonText = JSON.stringify(data);
+                const encryptedObj = await encryptText(jsonText, currentPassword);
+                fileContent = JSON.stringify(encryptedObj, null, 2);
+                fileName = '三盘映射_加密备份_' + new Date().toISOString().slice(0, 10) + '.json';
+            } else {
+                fileContent = JSON.stringify(data, null, 2);
+                fileName = '三盘映射_明文备份_' + new Date().toISOString().slice(0, 10) + '.json';
+            }
+
+            const blob = new Blob([fileContent], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = '三盘映射备份_' + new Date().toISOString().slice(0, 10) + '.json';
+            a.download = fileName;
             a.click();
             URL.revokeObjectURL(a.href);
-            showToast('📤 导出成功', 'success');
+            showToast(isEncryptedMode ? '🔒 加密导出成功' : '📤 明文导出成功', 'success');
         }
-
         function importData(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -2876,9 +2944,11 @@ function renderUploadConfig() {
                     if (imported.trees && imported.links !== undefined) {
                         if (confirm('导入将覆盖当前数据，确定继续吗？')) {
                             data = imported;
-                            TREE_IDS.forEach(id => {
-                                if (!data.trees[id]) data.trees[id] = { id: id, label: DEFAULT_LABELS[id],
-                                    nodes: [], currentDir: null };
+                            if (!data.treeOrder) {
+                                data.treeOrder = ['local'].concat(Object.keys(data.trees).filter(id => id !== 'local'));
+                            }
+                            getTreeIds().forEach(id => {
+                                if (!data.trees[id]) data.trees[id] = { id: id, label: '☁️ 云盘', nodes: [], currentDir: null };
                             });
                             if (!data.selectedNodes) data.selectedNodes = [];
                             data.multiMode = false;
@@ -2887,6 +2957,7 @@ function renderUploadConfig() {
                             data.currentTreeId = data.currentTreeId || 'local';
                             fixNextId();
                             saveState();
+                            updateTabs();
                             renderCurrentTree();
                             showToast('✅ 导入成功！', 'success');
                         }
@@ -2895,34 +2966,79 @@ function renderUploadConfig() {
             };
             reader.readAsText(file);
             event.target.value = '';
-        }
-
-        // ============================================================
-        //  初始化
-        // ============================================================
-                // 初始化不加载假数据，等待用户上传 index.jsonl
-        TREE_IDS.forEach(id => {
-            data.trees[id].nodes = [];
-            data.trees[id].currentDir = null;
-        });
+        }        
                 // ============================================================
         //  真实数据解析引擎：把 index.jsonl 转为树状结构
         // ============================================================
-        async function loadRealIndex(event) {
-            const file = event.target.files[0];
+        // 统一处理文件导入（支持点击和拖拽，智能识别 JSON 备份或 JSONL 源数据）
+        async function processImportFile(file) {
             if (!file) return;
-            const text = await file.text();
+            
+            if (!confirm(`确定要导入文件【${file.name}】吗？\n这将覆盖当前页面的数据。`)) {
+                return;
+            }
+
+            let text = await file.text();
+            
+            // 1. 密文解密拦截
+            try {
+                const parsed = JSON.parse(text);
+                if (parsed.type === "encrypted_index") {
+                    let decryptedSuccess = false;
+                    while (!decryptedSuccess) {
+                        const pwd = await promptPassword('🔒 导入加密索引，请输入简令');
+                        if (!pwd) return; 
+                        showToast('正在解密...', 'info');
+                        try {
+                            text = await decryptText(parsed, pwd);
+                            currentPassword = pwd;
+                            decryptedSuccess = true; 
+                            showToast('✅ 解密成功', 'success');
+                        } catch (decErr) {
+                            showToast('❌ 密码错误，请重新输入', 'error', 2000);
+                        }
+                    }
+                }
+            } catch (e) {
+                // 解析失败说明是明文 JSONL，继续往下走
+            }
+
+            // ---------------- 核心修复：智能识别格式 ----------------
+            try {
+                const importedData = JSON.parse(text);
+                // 如果解析出来是一个完整对象，且包含 trees 和 links，说明这是“系统备份”！
+                if (importedData.trees && importedData.links !== undefined) {
+                    data = importedData;
+                    if (!data.treeOrder) {
+                        data.treeOrder = ['local'].concat(Object.keys(data.trees).filter(id => id !== 'local'));
+                    }
+                    getTreeIds().forEach(id => {
+                        if (!data.trees[id]) data.trees[id] = { id: id, label: '☁️ 云盘', nodes: [], currentDir: null };
+                    });
+                    if (!data.selectedNodes) data.selectedNodes = [];
+                    data.multiMode = false;
+                    data.movingMode = false;
+                    if (!data.sortKey) data.sortKey = 'name-asc';
+                    data.currentTreeId = data.currentTreeId || 'local';
+                    fixNextId();
+                    saveState();
+                    updateTabs();
+                    renderCurrentTree();
+                    showToast('✅ 系统备份恢复成功（包含所有未映射文件夹）！', 'success');
+                    return; // 恢复完毕，直接结束函数，不走下面的 JSONL 解析
+                }
+            } catch (e) {
+                // 如果解析失败（比如有多行 JSONL），说明不是系统备份，继续往下走
+            }
+            // ---------------- 识别结束 ----------------
+
+            // 下面保留你原本的 JSONL 按行解析逻辑
             const lines = text.split('\n').filter(l => l.trim() !== '');
             
-            // 重置数据
-            TREE_IDS.forEach(id => {
-                data.trees[id].nodes = [];
-                data.trees[id].currentDir = null;
-            });
+            resetCloudTrees();
             data.links = [];
             data.nextId = 1;
 
-            // 辅助函数：按路径找或建文件夹
             function getOrCreateDir(treeId, pathStr) {
                 if (!pathStr || pathStr === '.') return null;
                 const parts = pathStr.split('/').filter(p => p);
@@ -2940,7 +3056,6 @@ function renderUploadConfig() {
                 return currentNode;
             }
 
-            // 辅助函数：在指定父目录下找或建文件
             function getOrCreateFile(treeId, parentNode, fileName, fileSize) {
                 let nodes = parentNode ? parentNode.children : data.trees[treeId].nodes;
                 let found = nodes.find(n => n.name === fileName && n.type === 'file');
@@ -2957,27 +3072,16 @@ function renderUploadConfig() {
                     const obj = JSON.parse(line);
                     if (!obj.encrypted_name) return;
 
-                    // 1. 构建本地树 (按 relative_path)
                     const localParent = getOrCreateDir('local', obj.relative_path || '');
                     const localFile = getOrCreateFile('local', localParent, obj.original_name, obj.sizes?.encrypted);
 
-                    // 2. 构建云盘树 (遍历 clouds 数组)
                     if (obj.clouds && Array.isArray(obj.clouds)) {
                         obj.clouds.forEach(cloud => {
-                                                        // 固定映射，防止脏数据污染界面
-                            let treeId = 'cloudB'; // 默认其他盘
-                            if (cloud.name.includes('阿里')) treeId = 'cloudA';
-                            else if (cloud.name.includes('光鸭')) treeId = 'cloudB';
-                            
-                            // 只改一次名字
-                            if (data.trees[treeId].label === DEFAULT_LABELS[treeId]) {
-                                data.trees[treeId].label = '☁️ ' + cloud.name;
-                            }
-
+                            if (!cloud || !cloud.name) return;
+                            const treeId = ensureCloudTree(cloud.name);
                             const cloudParent = getOrCreateDir(treeId, cloud.path || '');
                             const cloudFile = getOrCreateFile(treeId, cloudParent, obj.encrypted_name, obj.sizes?.encrypted);
 
-                            // 3. 建立映射关系
                             if (localFile && cloudFile) {
                                 data.links.push({
                                     id: 'l' + (data.nextId++),
@@ -2993,29 +3097,57 @@ function renderUploadConfig() {
                 }
             });
 
-            // 更新底部 Tab 文字
-                        // 更新底部 Tab 文字（更安全的写法）
-            document.querySelector('[data-tree="cloudA"]').innerHTML = `${data.trees.cloudA.label} <span class="tab-badge" id="badge-cloudA"></span>`;
-            document.querySelector('[data-tree="cloudB"]').innerHTML = `${data.trees.cloudB.label} <span class="tab-badge" id="badge-cloudB"></span>`;
-            // 重新渲染，强制切换回本地盘根目录
             switchTree('local');
             showToast(`✅ 成功导入 ${successCount} 条映射！`, 'success', 3000);
-            event.target.value = '';
         }
+
+        // ============================================================
+        //  【补回缺失的入口函数】
+        //  顶部 📥 按钮、更多菜单「导入数据」都绑定到这里
+        // ============================================================
+        async function loadRealIndex(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) { event.target.value = ''; return; }
+            try {
+                await processImportFile(file);
+            } catch (err) {
+                console.error('导入失败:', err);
+                showToast('❌ 导入失败: ' + (err.message || '未知错误'), 'error');
+            } finally {
+                // 清空 input，允许重复选择同一个文件
+                event.target.value = '';
+            }
+        }
+
+        // ============================================================
+        //  初始化
+        // ============================================================
+        resetCloudTrees();
         initEvents();
         updateTabs();
         updateBackBtn();
         updateTitlePath();
         updateSortMenu();
         renderCurrentTree();
+                // 测试加解密引擎
+        async function testCrypto() {
+            const testPwd = "123456";
+            const testText = "Hello 老王！这是测试密文。";
+            console.log("开始测试加密引擎...");
+            const encrypted = await encryptText(testText, testPwd);
+            console.log("✅ 加密成功，密文对象：", encrypted);
+            
+            const decrypted = await decryptText(encrypted, testPwd);
+            console.log("✅ 解密成功，明文为：", decrypted);
+            
+            if (decrypted === testText) {
+                showToast("✅ 端侧加密引擎测试通过！", "success");
+            } else {
+                showToast("❌ 引擎测试失败，内容不匹配", "error");
+            }
+        }
 
         window.addEventListener('beforeunload', function() { if (_longPressTimer) clearTimeout(_longPressTimer); });
-
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js')
-                .then(() => console.log('✅ Service Worker 注册成功'))
-                .catch(err => console.log('❌ Service Worker 注册失败:', err));
-        }
     </script>
 </body>
 </html>
