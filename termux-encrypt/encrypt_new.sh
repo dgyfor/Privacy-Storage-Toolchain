@@ -57,6 +57,12 @@ get_relative_path() {
 get_password() {
     echo "$1"
 }
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    printf '%s' "$s"
+}
 # 修改加密文件对应的原始文件名
 log_encrypted_file() {
     local enc_base="$1"
@@ -260,10 +266,11 @@ ea() {
         if [[ -f "$group_file" ]]; then
             while IFS= read -r line; do
                 local orig=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}')
+                local line_path=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $3); print $3}')
                 if [[ -z "$orig" ]]; then
                     orig=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}')
                 fi
-                local key="${orig// /}"
+                local key="${line_path// /}||${orig// /}"
                 encrypted_nospace["$key"]=1
             done < "$group_file"
         fi
@@ -271,9 +278,11 @@ ea() {
 
     local -a encrypted_files=()
     local -a unencrypted_files=()
+    local rel_path_nospace="${rel_path// /}"
     for f in "${files[@]}"; do
         local f_nospace="${f// /}"
-        if [[ -n "${encrypted_nospace[$f_nospace]}" ]]; then
+        local k="${rel_path_nospace}||${f_nospace}"
+        if [[ -n "${encrypted_nospace[$k]}" ]]; then
             encrypted_files+=("$f")
         else
             unencrypted_files+=("$f")
@@ -367,8 +376,10 @@ ea() {
             echo "$enc | $orig | $path |  |  | $size" >> "$GLOBAL_INDEX"
             
             # 直接追加到 jsonl
+            local esc_orig="$(json_escape "$orig")"
+            local esc_path="$(json_escape "$path")"
             printf '{"encrypted_name":"%s","original_name":"%s","relative_path":"%s","clouds":[],"cipher":"AES-256-CBC","created_at":"%s","sha256":"%s","sizes":{"encrypted":%s}}\n' \
-              "$enc" "$orig" "$path" "$created" "$sha" "$size" >> "$INDEX_JSON"
+              "$enc" "$esc_orig" "$esc_path" "$created" "$sha" "$size" >> "$INDEX_JSON"
               
             # 更新其他辅助文件
             echo "$enc|$size" >> "$MAPPING_ROOT/.enc_sizes.txt"
