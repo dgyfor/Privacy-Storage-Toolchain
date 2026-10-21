@@ -1025,7 +1025,6 @@
         let currentPassword = null;  // 保存当前输入的密码用于后续操作
         let currentPasswordHasPrefix = false; // 当前密码是否包含自定义前缀
         let _lastPwdHasPrefix = false;        // 最近一次密码弹窗中是否填写了前缀
-        let _pwdPrefixRequired = false;       // 当前密码弹窗是否强制要求前缀（由密文元数据决定）
 
         // 工具：ArrayBuffer 转 Hex 字符串 (为了存入 JSON)
         function buf2hex(buffer) {
@@ -1068,7 +1067,7 @@
             return {
                 schema_version: "v1",
                 type: "encrypted_index",
-                has_prefix: hasPrefix, // 【新增】记录是否使用了自定义前缀
+                has_prefix: hasPrefix, // 记录是否使用了自定义前缀
                 salt: buf2hex(salt),
                 iv: buf2hex(iv),
                 ciphertext: buf2hex(encrypted)
@@ -1078,18 +1077,23 @@
         let _pwdResolve = null;
 
         // 打开密码弹窗，返回一个 Promise
-        function promptPassword(title = '🔑 请输入简令', isPrefixRequired = false) {
+        // showPrefix: true = 显示前缀输入框（需要前缀的文件 / 导出时设置前缀）
+        //             false = 隐藏前缀输入框（文件本身不含前缀，避免误导用户）
+        function promptPassword(title = '🔑 请输入简令', showPrefix = true) {
             return new Promise((resolve) => {
                 _pwdResolve = resolve;
-                _pwdPrefixRequired = isPrefixRequired;
                 document.getElementById('pwdTitle').textContent = title;
 
                 const prefixInput = document.getElementById('prefixInput');
-                if (isPrefixRequired) {
-                    prefixInput.placeholder = "此文件需要前缀，不可留空！";
-                } else {
+                const prefixField = prefixInput.parentElement;
+                if (showPrefix) {
+                    prefixField.style.display = 'block';
                     prefixInput.placeholder = "例如：老王（可留空）";
+                } else {
+                    prefixField.style.display = 'none';
+                    prefixInput.placeholder = "此文件无需前缀";
                 }
+
                 prefixInput.value = '';
                 document.getElementById('pwdInput').value = '';
                 document.getElementById('passwordOverlay').classList.add('visible');
@@ -1103,7 +1107,6 @@
             document.getElementById('prefixInput').placeholder = "例如：老王（可留空）";
             document.getElementById('pwdInput').value = '';
             _lastPwdHasPrefix = false;
-            _pwdPrefixRequired = false;
             if (_pwdResolve) { _pwdResolve(null); _pwdResolve = null; }
         }
 
@@ -2918,7 +2921,7 @@
         async function exportData() {
             // 如果当前没有密码（比如刚打开页面没上锁），强制让他设置并上锁
             if (!currentPassword) {
-                const pwd = await promptPassword('🔑 设置导出文件的简令（密码）');
+                const pwd = await promptPassword('🔑 设置导出文件的简令（密码）', true);
                 if (!pwd) return;
                 currentPassword = pwd;
                 currentPasswordHasPrefix = _lastPwdHasPrefix;
@@ -2939,7 +2942,9 @@
             if (isEncryptedMode) {
                 showToast('正在加密...', 'info');
                 const jsonText = JSON.stringify(data);
-                const encryptedObj = await encryptText(jsonText, currentPassword, currentPasswordHasPrefix);
+                // 使用当前记忆的前缀标记（导出时的实际状态）
+                const hasPrefix = currentPasswordHasPrefix === true;
+                const encryptedObj = await encryptText(jsonText, currentPassword, hasPrefix);
                 fileContent = JSON.stringify(encryptedObj, null, 2);
                 fileName = '三盘映射_加密备份_' + new Date().toISOString().slice(0, 10) + '.json';
             } else {
@@ -3006,27 +3011,24 @@
                 const parsed = JSON.parse(text);
                 if (parsed.type === "encrypted_index") {
                     let decryptedSuccess = false;
-                    const requiresPrefix = parsed.has_prefix === true; // 从密文中读取
-                    
+                    // 读取密文里有没有前缀标记
+                    const requiresPrefix = parsed.has_prefix === true;
+
                     while (!decryptedSuccess) {
-                        // 如果密文要求前缀，我们就让弹窗提示严格一点
+                        // 如果文件没有前缀，传 false 隐藏输入框；如果有，传 true 显示并提示
                         const pwd = await promptPassword('🔒 导入加密索引，请输入简令', requiresPrefix);
-                        if (!pwd) return; 
-                        
+                        if (!pwd) return;
+
                         showToast('正在解密...', 'info');
                         try {
                             text = await decryptText(parsed, pwd);
                             currentPassword = pwd;
                             currentPasswordHasPrefix = _lastPwdHasPrefix;
-                            decryptedSuccess = true; 
+                            decryptedSuccess = true;
                             showToast('✅ 解密成功', 'success');
                         } catch (decErr) {
-                            // 【升级提示语】：如果是要求前缀，提示不同
-                            if (requiresPrefix) {
-                                showToast('❌ 解密失败：请检查前缀和密码是否都输入了', 'error', 3000);
-                            } else {
-                                showToast('❌ 密码错误，请重新输入', 'error', 2000);
-                            }
+                            // 统一错误提示，不再误导用户以为只是密码问题
+                            showToast('❌ 解密失败：密码错误或前缀不匹配', 'error', 2500);
                         }
                     }
                 }
@@ -3111,7 +3113,7 @@
                             if (!cloud || !cloud.name) return;
                             const treeId = ensureCloudTree(cloud.name);
                             const cloudParent = getOrCreateDir(treeId, cloud.path || '');
-                            const cloudFile = getOrCreateFile(cloudId, cloudParent, obj.encrypted_name, obj.sizes?.encrypted);
+                            const cloudFile = getOrCreateFile(treeId, cloudParent, obj.encrypted_name, obj.sizes?.encrypted);
 
                             if (localFile && cloudFile) {
                                 data.links.push({
