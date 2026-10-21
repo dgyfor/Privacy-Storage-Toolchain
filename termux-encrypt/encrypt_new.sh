@@ -5,7 +5,7 @@ shopt -s nullglob
 #  全局配置
 # ============================================================
 # 获取脚本所在目录的上一级（即项目根目录）
-BASE_DIR="$(dirname "$(pwd)")"
+if [[ "$(basename "$(pwd)")" == "termux-encrypt" ]]; then BASE_DIR="$(dirname "$(pwd)")"; else BASE_DIR="$(pwd)"; fi
 
 # 如果是手机上（有 /storage 目录），用手机路径；否则用电脑的 test_vault
 if [ -d "/storage/emulated/0" ]; then
@@ -21,12 +21,10 @@ else
 fi
 
 INDEX_JSON="$MAPPING_ROOT/index.jsonl"
-PASSWORDS_FILE="$MAPPING_ROOT/passwords.txt"
 CACHE_FILE="$MAPPING_ROOT/.enc_cache"
 PAR2_ROOT="$BASE_DIR/test_vault/Par2_Backups"
 
 mkdir -p "$MAPPING_ROOT" "$(dirname "$GLOBAL_INDEX")" "$PAR2_ROOT"
-touch "$PASSWORDS_FILE"
 
 # ============================================================
 #  核心辅助函数
@@ -56,6 +54,12 @@ get_relative_path() {
 
 get_password() {
     echo "$1"
+}
+trim() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
 }
 json_escape() {
     local s="$1"
@@ -175,7 +179,7 @@ _encrypt_file() {
         enc_name="$ENCRYPT_ROOT/$rel_path/enc_${timestamp}_${rand}_${counter}.dat"
         ((counter++))
     done
-    openssl enc -aes-256-cbc -pbkdf2 -salt -in "$file" -out "$enc_name" -k "$pass" 2>/dev/null
+    printf '%s' "$pass" | openssl enc -aes-256-cbc -pbkdf2 -salt -in "$file" -out "$enc_name" -pass stdin 2>/dev/null
     if [[ $? -eq 0 ]]; then
         echo "✅ 加密成功: $enc_name"
         local mapfile="$MAPPING_ROOT/加密对照表.txt"
@@ -192,7 +196,7 @@ _encrypt_file() {
             }
         ' "$GLOBAL_INDEX" > "$GLOBAL_INDEX.tmp" && mv "$GLOBAL_INDEX.tmp" "$GLOBAL_INDEX"
         echo "$enc_name|$dat_size" >> "$MAPPING_ROOT/.enc_sizes.txt"
-        rebuild_idx &
+        rebuild_idx
         return 0
     else
         echo "❌ 加密失败: $file"
@@ -215,7 +219,7 @@ _encrypt_file_batch() {
         ((counter++))
     done
 
-    openssl enc -aes-256-cbc -pbkdf2 -salt -in "$file" -out "$enc_name" -k "$pass" 2>/dev/null
+    printf '%s' "$pass" | openssl enc -aes-256-cbc -pbkdf2 -salt -in "$file" -out "$enc_name" -pass stdin 2>/dev/null
     if [[ $? -eq 0 ]]; then
          local dat_size=$(stat -c %s "$enc_name" 2>/dev/null || echo 0)
 local sha=$(sha256sum "$enc_name" | cut -d' ' -f1)
@@ -334,10 +338,10 @@ ea() {
     fi
 
     echo -n "请输入加密密码（数字=代号）: "
-    read -r pass_input
+    read -rs pass_input; echo ""
     local pass=$(get_password "$pass_input")
     echo -n "请再次输入密码: "
-    read -r pass_input2
+    read -rs pass_input2; echo ""
     local pass2=$(get_password "$pass_input2")
     if [[ "$pass" != "$pass2" ]]; then
         echo "两次密码不一致。"
@@ -439,7 +443,7 @@ decrypt_one() {
     local ext="${orig_name##*.}"
     [[ "$ext" != "$orig_name" ]] && ext=".${ext}" || ext=""
     local out_file="$(unique_filename "$target_dir" "$base" "$ext")"
-    openssl enc -d -aes-256-cbc -pbkdf2 -in "$dat_file" -out "$out_file" -k "$pass" 2>/dev/null
+    printf '%s' "$pass" | openssl enc -d -aes-256-cbc -pbkdf2 -in "$dat_file" -out "$out_file" -pass stdin 2>/dev/null
     if [[ $? -eq 0 ]]; then
         [[ -z "$QUIET" ]] && echo "✅ 解密成功: $out_file"
         return 0
@@ -519,14 +523,14 @@ da() {
 
     if [[ ${#selected_files[@]} -gt 1 ]]; then
         echo -n "请输入解密密码（数字=代号）: "
-        read -r pass_input
+        read -rs pass_input; echo ""
         local pass=$(get_password "$pass_input")
         if [[ -z "$pass" ]]; then
             echo "❌ 密码无效"
             return
         fi
         local test_file="${selected_files[0]}"
-        if ! openssl enc -d -aes-256-cbc -pbkdf2 -in "$test_file" -out /dev/null -k "$pass" 2>/dev/null; then
+        if ! printf '%s' "$pass" | openssl enc -d -aes-256-cbc -pbkdf2 -in "$test_file" -out /dev/null -pass stdin 2>/dev/null; then
             echo "❌ 密码错误，请重新运行。"
             return 1
         fi
@@ -553,13 +557,13 @@ da() {
         local pass_input
         while true; do
             echo -n "请输入解密密码（数字=代号）: "
-            read -r pass_input
+            read -rs pass_input; echo ""
             local pass=$(get_password "$pass_input")
             if [[ -z "$pass" ]]; then
                 echo "❌ 无效密码输入。"
                 continue
             fi
-            if openssl enc -d -aes-256-cbc -pbkdf2 -in "$dat_file" -out /dev/null -k "$pass" 2>/dev/null; then
+            if printf '%s' "$pass" | openssl enc -d -aes-256-cbc -pbkdf2 -in "$dat_file" -out /dev/null -pass stdin 2>/dev/null; then
                 echo "✅ 密码正确！"
                 break
             else
@@ -591,7 +595,7 @@ db() {
     echo "找到 $total 个加密文件。"
 
     echo -n "请输入解密密码（数字=代号）: "
-    read -r pass_input
+    read -rs pass_input; echo ""
     local pass=$(get_password "$pass_input")
     if [[ -z "$pass" ]]; then
         echo "❌ 密码无效"
@@ -600,7 +604,7 @@ db() {
 
     echo "🔍 验证密码是否正确..."
     local test_file="${dat_files[0]}"
-    if openssl enc -d -aes-256-cbc -pbkdf2 -in "$test_file" -out /dev/null -k "$pass" 2>/dev/null; then
+    if printf '%s' "$pass" | openssl enc -d -aes-256-cbc -pbkdf2 -in "$test_file" -out /dev/null -pass stdin 2>/dev/null; then
         echo "✅ 密码正确，开始批量解密..."
     else
         echo "❌ 密码错误，请重新运行 db 并输入正确密码。"
@@ -639,129 +643,7 @@ db() {
 # ============================================================
 #  查询与浏览 (lk) 模块
 # ============================================================
-_lk_list_files() {
-    local dir="$1"
-    local keyword="$2"
-    local -a enc_list orig_list
-    local dir_nospace="${dir// /}"
-    while IFS='|' read -r enc orig path rest; do
-        enc="${enc// /}"
-        enc="${enc// /}"
-        orig="${orig// /}"
-        path="${path// /}"
-        if [[ "$path" == "$dir_nospace" ]]; then
-            enc_list+=("$enc")
-            orig_list+=("$orig")
-        fi
-    done < "$GLOBAL_INDEX"
 
-    local count=${#enc_list[@]}
-    if [[ $count -eq 0 ]]; then
-        echo "该目录下没有文件。"
-        return 1
-    fi
-
-    while true; do
-        echo ""
-        echo "📁 目录: $dir  ($count 个文件)"
-        echo "----------------------------------------"
-        for ((i=0; i<count; i++)); do
-            local status="☁️"
-            local fpath="$(_get_local_path "${enc_list[$i]}")"
-            if [[ -n "$fpath" && -f "$fpath" ]]; then
-                status="📁"
-            fi
-            local display_name="$(basename "${orig_list[$i]}")"
-            printf "[%2d] %s %s.dat -> %s\n" "$((i+1))" "$status" "${enc_list[$i]}" "$display_name"
-        done
-        echo "----------------------------------------"
-        echo "操作: 输入编号查看详情，输入 d+编号 解密，输入 g 生成映射，输入 b 返回上级，q 退出"
-        echo -n "选择: "
-        read -r op
-
-        case "$op" in
-            b|B) return 2 ;;
-            q|Q) return 1 ;;
-            g|G)
-                echo "▶️ 正在为目录 '$dir' 生成映射文件..."
-                genmap "$dir"
-                echo "按 Enter 继续..."
-                read -r
-                continue
-                ;;
-            d*)
-                local num="${op#d}"
-                if [[ "$num" =~ ^[0-9]+$ ]] && (( num >= 1 && num <= count )); then
-                    local idx=$((num-1))
-                    local enc="${enc_list[$idx]}"
-                    local fpath="$(_get_local_path "$enc")"
-                    if [[ -n "$fpath" && -f "$fpath" ]]; then
-                        echo -n "请输入解密密码（数字=代号）: "
-                        read -r pass_input
-                        local pass=$(get_password "$pass_input")
-                        if [[ -n "$pass" ]]; then
-                            decrypt_with_prompt "$fpath" "$pass"
-                        else
-                            echo "密码无效。"
-                        fi
-                    else
-                        echo "该文件不在本地，无法解密。"
-                    fi
-                    echo "按 Enter 继续..."
-                    read -r
-                    continue
-                else
-                    echo "无效编号。"
-                    continue
-                fi
-                ;;
-            *)
-                if [[ "$op" =~ ^[0-9]+$ ]] && (( op >= 1 && op <= count )); then
-                    local idx=$((op-1))
-                    local enc="${enc_list[$idx]}"
-                    local orig="${orig_list[$idx]}"
-                    local fpath="$(_get_local_path "$enc")"
-                    echo ""
-                    echo "📄 原文件名: $(basename "$orig")"
-                    echo "🔐 加密文件: $enc.dat"
-                    if [[ -n "$fpath" && -f "$fpath" ]]; then
-                        local size=$(stat -c %s "$fpath" 2>/dev/null)
-                        local mtime=$(stat -c %y "$fpath" 2>/dev/null | cut -d. -f1)
-                        echo "📁 本地存在: $fpath"
-                        [[ -n "$size" ]] && echo "📦 大小: $(human_size "$size")"
-                        [[ -n "$mtime" ]] && echo "🕒 修改时间: $mtime"
-                        echo ""
-                        echo -n "是否解密此文件？(y/n): "
-                        read -r dec_ans
-                        if [[ "$dec_ans" == "y" ]]; then
-                            echo -n "请输入解密密码: "
-                            read -r pass_input
-                            local pass=$(get_password "$pass_input")
-                            if [[ -n "$pass" ]]; then
-                                decrypt_with_prompt "$fpath" "$pass"
-                            else
-                                echo "密码无效。"
-                            fi
-                        fi
-                    else
-                        echo "📁 本地不存在（已删除或未下载）"
-                        local cloud_info=$(awk -F'|' -v e="$enc" '
-                            $1 == e { if ($4 != "") print $4 ":" $5; else print "" }' "$GLOBAL_INDEX")
-                        if [[ -n "$cloud_info" ]]; then
-                            echo "☁️ 云盘位置: $cloud_info"
-                        fi
-                    fi
-                    echo "按 Enter 继续..."
-                    read -r
-                    continue
-                else
-                    echo "无效输入。"
-                    continue
-                fi
-                ;;
-        esac
-    done
-}
 # ============================================================
 #  _lk_browse_dirs  - 根目录浏览（顶级目录）
 # ============================================================
@@ -781,6 +663,10 @@ _lk_browse_dirs() {
     done < "$GLOBAL_INDEX"
 
     if [[ ${#top_dirs[@]} -eq 0 ]]; then
+        if grep -q '^[^|]*|[^|]*| *\. *|' "$GLOBAL_INDEX" 2>/dev/null; then
+            _lk_browse_files "."
+            return
+        fi
         echo "索引中没有顶级目录。"
         return
     fi
@@ -984,7 +870,7 @@ _lk_browse_files() {
                         read -r dec_ans
                         if [[ "$dec_ans" == "y" ]]; then
                             echo -n "请输入解密密码: "
-                            read -r pass_input
+                            read -rs pass_input; echo ""
                             local pass=$(get_password "$pass_input")
                             if [[ -n "$pass" ]]; then
                                 decrypt_with_prompt "$fpath" "$pass"
@@ -1030,7 +916,7 @@ lk() {
             enc="${enc// /}"
             orig="${orig// /}"
             path="${path// /}"
-            if [[ "$orig" =~ $keyword || "$path" =~ $keyword || "$enc" =~ $keyword ]]; then
+            if [[ "$orig" == *"$keyword"* || "$path" == *"$keyword"* || "$enc" == *"$keyword"* ]]; then
                 match_dirs_raw["$path"]=1
             fi
         done < "$GLOBAL_INDEX"
@@ -1067,7 +953,7 @@ lk() {
             while IFS='|' read -r enc orig path rest; do
                 path="${path// /}"
                 if [[ "$path" == "$d" || "$path" == "$d"/* ]]; then
-                    if [[ "$orig" =~ $keyword || "$path" =~ $keyword || "$enc" =~ $keyword ]]; then
+                    if [[ "$orig" == *"$keyword"* || "$path" == *"$keyword"* || "$enc" == *"$keyword"* ]]; then
                         ((count++))
                     fi
                 fi
@@ -1104,10 +990,10 @@ setcloud() {
     local -a missing_items=()
     local idx=1
     while IFS='|' read -r enc orig path cloud_name cloud_path size; do
-        enc="${enc// /}"
-        orig="${orig// /}"
-        path="${path// /}"
-        cloud_name="${cloud_name// /}"
+        enc="$(trim "$enc")"
+        orig="$(trim "$orig")"
+        path="$(trim "$path")"
+        cloud_name="$(trim "$cloud_name")"
         if [[ -z "$cloud_name" ]]; then
             missing_items+=("$enc|$orig|$path|$size")
             printf "[%3d] %s (路径: %s)\n" "$idx" "${orig:0:35}" "$path"
@@ -1152,13 +1038,13 @@ setcloud() {
     for idx in "${selected_indices[@]}"; do
         local item="${missing_items[$idx]}"
         IFS='|' read -r enc orig path size <<< "$item"
-        awk -F'|' -v enc="$enc" -v orig="$orig" -v path="$path" -v cname="$cloud_name" -v cpath="$cloud_path" '
+        # 只按加密文件名（唯一键）精确匹配，避免 orig/path 空格差异导致漏改
+        awk -F'|' -v enc="$enc" -v cname="$cloud_name" -v cpath="$cloud_path" '
             BEGIN {OFS=FS}
             {
-                gsub(/^[ \t]+|[ \t]+$/, "", $1);
-                gsub(/^[ \t]+|[ \t]+$/, "", $2);
-                gsub(/^[ \t]+|[ \t]+$/, "", $3);
-                if ($1 == enc && $2 == orig && $3 == path) {
+                e=$1;
+                gsub(/^[ \t]+|[ \t]+$/, "", e);
+                if (e == enc) {
                     $4 = cname;
                     $5 = cpath;
                 }
@@ -1166,8 +1052,8 @@ setcloud() {
             }
         ' "$GLOBAL_INDEX" > "$GLOBAL_INDEX.tmp" && mv "$GLOBAL_INDEX.tmp" "$GLOBAL_INDEX"
     done
-    # 同步云盘信息到 index.jsonl
-        # 纯 Bash 同步云盘信息到 index.jsonl（免去 Python 依赖，全平台兼容）
+
+    # 同步云盘信息到 index.jsonl：按完整字段 "encrypted_name":"<enc>" 精确匹配
     mkdir -p "$MAPPING_ROOT"
     touch "$INDEX_JSON"
     for idx in "${selected_indices[@]}"; do
@@ -1180,9 +1066,8 @@ setcloud() {
         
         if [[ -f "$INDEX_JSON" ]]; then
             while IFS= read -r line; do
-                # 匹配对应的 encrypted_name
-                if [[ "$line" == *"$_enc"* ]]; then
-                    # 用 sed 把空的或者旧的 clouds 数组替换成新的
+                # 精确匹配 encrypted_name 字段，避免 enc_123 误命中 enc_1234
+                if [[ "$line" == *"\"encrypted_name\":\"$_enc\""* ]]; then
                     local new_line=$(echo "$line" | sed -E "s|\"clouds\":\[[^]]*\]|\"clouds\":$new_clouds|g")
                     echo "$new_line" >> "$tmp_jsonl"
                 else
@@ -1225,7 +1110,7 @@ search() {
         echo "❌ 全局索引不存在。"
         return 1
     fi
-    local matches=$(grep -iF "$keyword" "$GLOBAL_INDEX")
+    local matches=$(grep -iF -- "$keyword" "$GLOBAL_INDEX")
     if [[ -z "$matches" ]]; then
         echo "❌ 未找到包含关键词 '$keyword' 的记录。"
         return 1
@@ -1234,9 +1119,9 @@ search() {
     declare -A dir_size dir_count
     local total_bytes=0 total_files=0
     while IFS='|' read -r enc orig path rest; do
-        enc=$(echo "$enc" | xargs)
-        orig=$(echo "$orig" | xargs)
-        path=$(echo "$path" | xargs)
+        enc=$(trim "$enc")
+        orig=$(trim "$orig")
+        path=$(trim "$path")
         [[ -z "$path" ]] && path="."
         local size=$(_get_enc_size "$enc")
         dir_size["$path"]=$(( ${dir_size["$path"]:-0} + size ))
@@ -1270,9 +1155,9 @@ cloud() {
     declare -A cloud_dirs
     local total=0
     while IFS='|' read -r enc orig path rest; do
-        enc=$(echo "$enc" | xargs)
-        orig=$(echo "$orig" | xargs)
-        path=$(echo "$path" | xargs)
+        enc=$(trim "$enc")
+        orig=$(trim "$orig")
+        path=$(trim "$path")
         [[ -z "$path" ]] && path="."
         local local_path="$(_get_local_path "$enc")"
         if [[ -z "$local_path" || ! -f "$local_path" ]]; then
@@ -1410,29 +1295,20 @@ rebuild_idx() {
     echo "🔄 正在重建辅助索引（按首字母分组）..."
     local group_dir="$MAPPING_ROOT/.idx_groups"
     mkdir -p "$group_dir"
-    # 清空旧文件
     rm -f "$group_dir"/*.txt
 
-    # 遍历主索引，按第二列首字母分组
-    while IFS= read -r line; do
-        # 提取第二列原始文件名
-        local orig=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}')
-        # 如果 orig 为空，则用第一列加密文件名
-        if [[ -z "$orig" ]]; then
-            orig=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}')
-        fi
-        # 取首字母转为大写
-        local first_char=$(echo "${orig:0:1}" | tr '[:lower:]' '[:upper:]')
-        local group_file=""
-        if [[ "$first_char" =~ [A-Z] ]]; then
-            group_file="$group_dir/${first_char}.txt"
-        elif [[ "$first_char" =~ [0-9] ]]; then
-            group_file="$group_dir/0-9.txt"
-        else
-            group_file="$group_dir/OTHER.txt"
-        fi
-        echo "$line" >> "$group_file"
-    done < "$GLOBAL_INDEX"
+    awk -F'|' -v dir="$group_dir" '
+        {
+            o = $2
+            gsub(/^[ \t]+|[ \t]+$/, "", o)
+            if (o == "") { o = $1; gsub(/^[ \t]+|[ \t]+$/, "", o) }
+            c = toupper(substr(o, 1, 1))
+            if      (c ~ /[A-Z]/) f = dir "/" c ".txt"
+            else if (c ~ /[0-9]/) f = dir "/0-9.txt"
+            else                  f = dir "/OTHER.txt"
+            print $0 >> f
+        }
+    ' "$GLOBAL_INDEX"
 
     echo "✅ 辅助索引重建完成，共 $(wc -l < "$GLOBAL_INDEX") 条记录，分布在 $(ls -1 "$group_dir" | wc -l) 个分组文件中。"
 }
@@ -1491,7 +1367,7 @@ org() {
     local moved=0 skipped=0 no_record=0
     for f in "${dat_files[@]}"; do
         local base="$(basename "$f" .dat)"
-        local rel_path=$(grep "^$base |" "$GLOBAL_INDEX" | head -1 | awk -F'|' '{print $3}' | xargs)
+        local rel_path=$(trim "$(grep "^$base |" "$GLOBAL_INDEX" | head -1 | awk -F'|' '{print $3}')")
         if [[ -z "$rel_path" ]]; then
             echo "⚠️ 无索引记录，跳过: $f"
             ((no_record++))
@@ -1537,11 +1413,11 @@ info() {
         return 1
     fi
     IFS='|' read -r enc orig path cloud_name cloud_path size <<< "$line"
-    enc=$(echo "$enc" | xargs)
-    orig=$(echo "$orig" | xargs)
-    path=$(echo "$path" | xargs)
-    cloud_name=$(echo "$cloud_name" | xargs)
-    cloud_path=$(echo "$cloud_path" | xargs)
+    enc=$(trim "$enc")
+    orig=$(trim "$orig")
+    path=$(trim "$path")
+    cloud_name=$(trim "$cloud_name")
+    cloud_path=$(trim "$cloud_path")
     echo "📄 加密文件信息："
     echo "  加密文件名: ${enc}.dat"
     echo "  原始文件名: $orig"
@@ -1584,7 +1460,7 @@ doctor() {
     echo "检查索引与本地文件一致性..."
     local missing=0
     while IFS='|' read -r enc orig path rest; do
-        enc=$(echo "$enc" | xargs)
+        enc=$(trim "$enc")
         if ! _is_local "$enc"; then
             echo "  ⚠️ 缺失: ${enc}.dat (原: $orig)"
             ((missing++))
@@ -1677,25 +1553,25 @@ h() {
 
     local cmd="$1"
     case "$cmd" in
-        ea) echo "ea - 加密当前目录\n  用法: ea\n  交互选择当前目录下的文件进行加密，自动跳过已加密文件。" ;;
-        da) echo "da - 单文件解密\n  用法: da\n  交互选择当前目录下的 .dat 文件进行解密，支持输入 all 全选。" ;;
-        db) echo "db - 批量解密\n  用法: db\n  自动扫描所有加密目录中的 .dat 文件并解密，带进度显示，最后列出失败文件列表。" ;;
-        lk) echo "lk - 搜索/浏览索引\n  用法: lk [关键词]\n  无关键词：按目录浏览全部\n  有关键词：显示匹配的目录，进入后文件标记 ⭐" ;;
-        setcloud) echo "setcloud - 批量登记云盘路径\n  用法: setcloud\n  交互式列出未登记记录，可多选，批量填充云盘名称和路径。" ;;
-        uploaded) echo "uploaded - 查看已登记云盘的记录\n  用法: uploaded\n  显示已填写云盘信息的记录（文件名→云盘位置）。" ;;
-        search) echo "search - 搜索并汇总\n  用法: search <关键词>\n  按目录分组显示匹配文件的总大小。" ;;
-        cloud) echo "cloud - 列出云盘文件\n  用法: cloud\n  显示所有不在本地的加密文件及其大小。" ;;
-        genmap) echo "genmap - 生成映射\n  用法: genmap [目录]\n  为指定目录生成映射文件（格式：本地盘,云盘名\\n相对路径,云盘路径）。" ;;
-        gen) echo "gen - 批量生成映射\n  用法: gen -a\n  为所有目录批量生成映射文件。" ;;
-        rnm) echo "rnm - 修改原始文件名\n  用法: rnm <加密文件名> [新原始文件名]\n  示例: rnm enc_1234567890_1234.dat '新名称.jpg'\n  如果不提供新名称，会交互式询问。修改索引和对照表，不影响 .dat 文件本身。" ;;
-        org) echo "org - 整理加密文件\n  用法: org\n  将散落的加密文件移动到统一目录。" ;;
-        info) echo "info - 查看文件信息\n  用法: info <加密文件名>\n  示例: info enc_1234567890_1234.dat" ;;
-        stats) echo "stats - 统计信息\n  用法: stats\n  显示总记录数、本地文件数、总大小等。" ;;
-        doctor) echo "doctor - 系统检查\n  用法: doctor\n  检查目录、索引、文件完整性。" ;;
-        dup) echo "dup - 检查重复\n  用法: dup\n  检查索引中是否有重复记录。" ;;
-        refresh) echo "refresh - 刷新缓存\n  用法: refresh\n  重新扫描本地加密文件并更新缓存。" ;;
-        h) echo "h - 帮助\n  用法: h          - 显示所有命令\n       h <命令>   - 查看命令详情" ;;
-        *) echo "❌ 未知命令: $cmd" ;;
+        ea)       printf 'ea - 加密当前目录\n  用法: ea\n  交互选择当前目录下的文件进行加密，自动跳过已加密文件。\n' ;;
+        da)       printf 'da - 单文件解密\n  用法: da\n  交互选择当前目录下的 .dat 文件进行解密，支持输入 all 全选。\n' ;;
+        db)       printf 'db - 批量解密\n  用法: db\n  自动扫描所有加密目录中的 .dat 文件并解密，带进度显示，最后列出失败文件列表。\n' ;;
+        lk)       printf 'lk - 搜索/浏览索引\n  用法: lk [关键词]\n  无关键词：按目录浏览全部\n  有关键词：显示匹配的目录，进入后文件标记 ⭐\n' ;;
+        setcloud) printf 'setcloud - 批量登记云盘路径\n  用法: setcloud\n  交互式列出未登记记录，可多选，批量填充云盘名称和路径。\n' ;;
+        uploaded) printf 'uploaded - 查看已登记云盘的记录\n  用法: uploaded\n  显示已填写云盘信息的记录（文件名→云盘位置）。\n' ;;
+        search)   printf 'search - 搜索并汇总\n  用法: search <关键词>\n  按目录分组显示匹配文件的总大小。\n' ;;
+        cloud)    printf 'cloud - 列出云盘文件\n  用法: cloud\n  显示所有不在本地的加密文件及其大小。\n' ;;
+        genmap)   printf 'genmap - 生成映射\n  用法: genmap [目录]\n  为指定目录生成映射文件（格式：本地盘,云盘名\\n相对路径,云盘路径）。\n' ;;
+        gen)      printf 'gen - 批量生成映射\n  用法: gen -a\n  为所有目录批量生成映射文件。\n' ;;
+        rnm)      printf 'rnm - 修改原始文件名\n  用法: rnm <加密文件名> [新原始文件名]\n  示例: rnm enc_1234567890_1234.dat '"'"'新名称.jpg'"'"'\n  如果不提供新名称，会交互式询问。修改索引和对照表，不影响 .dat 文件本身。\n' ;;
+        org)      printf 'org - 整理加密文件\n  用法: org\n  将散落的加密文件移动到统一目录。\n' ;;
+        info)     printf 'info - 查看文件信息\n  用法: info <加密文件名>\n  示例: info enc_1234567890_1234.dat\n' ;;
+        stats)    printf 'stats - 统计信息\n  用法: stats\n  显示总记录数、本地文件数、总大小等。\n' ;;
+        doctor)   printf 'doctor - 系统检查\n  用法: doctor\n  检查目录、索引、文件完整性。\n' ;;
+        dup)      printf 'dup - 检查重复\n  用法: dup\n  检查索引中是否有重复记录。\n' ;;
+        refresh)  printf 'refresh - 刷新缓存\n  用法: refresh\n  重新扫描本地加密文件并更新缓存。\n' ;;
+        h)        printf 'h - 帮助\n  用法: h          - 显示所有命令\n       h <命令>   - 查看命令详情\n' ;;
+        *)        echo "❌ 未知命令: $cmd" ;;
     esac
 }
 # ============================================================
