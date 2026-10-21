@@ -1023,6 +1023,9 @@
         // ============================================================
         let isEncryptedMode = false; // 当前是否处于锁定（密文）状态
         let currentPassword = null;  // 保存当前输入的密码用于后续操作
+        let currentPasswordHasPrefix = false; // 当前密码是否包含自定义前缀
+        let _lastPwdHasPrefix = false;        // 最近一次密码弹窗中是否填写了前缀
+        let _pwdPrefixRequired = false;       // 当前密码弹窗是否强制要求前缀（由密文元数据决定）
 
         // 工具：ArrayBuffer 转 Hex 字符串 (为了存入 JSON)
         function buf2hex(buffer) {
@@ -1054,7 +1057,7 @@
         }
 
         // 加密文本 (返回 JSON 对象)
-        async function encryptText(text, password) {
+        async function encryptText(text, password, hasPrefix = false) {
             const enc = new TextEncoder();
             const salt = window.crypto.getRandomValues(new Uint8Array(16));
             const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -1065,6 +1068,7 @@
             return {
                 schema_version: "v1",
                 type: "encrypted_index",
+                has_prefix: hasPrefix, // 【新增】记录是否使用了自定义前缀
                 salt: buf2hex(salt),
                 iv: buf2hex(iv),
                 ciphertext: buf2hex(encrypted)
@@ -1074,12 +1078,20 @@
         let _pwdResolve = null;
 
         // 打开密码弹窗，返回一个 Promise
-        function promptPassword(title = '🔑 请输入简令') {
+        function promptPassword(title = '🔑 请输入简令', isPrefixRequired = false) {
             return new Promise((resolve) => {
                 _pwdResolve = resolve;
+                _pwdPrefixRequired = isPrefixRequired;
                 document.getElementById('pwdTitle').textContent = title;
-                document.getElementById('prefixInput').value = ''; // 清空前缀
-                document.getElementById('pwdInput').value = '';    // 清空密码
+
+                const prefixInput = document.getElementById('prefixInput');
+                if (isPrefixRequired) {
+                    prefixInput.placeholder = "此文件需要前缀，不可留空！";
+                } else {
+                    prefixInput.placeholder = "例如：老王（可留空）";
+                }
+                prefixInput.value = '';
+                document.getElementById('pwdInput').value = '';
                 document.getElementById('passwordOverlay').classList.add('visible');
                 setTimeout(() => document.getElementById('pwdInput').focus(), 100);
             });
@@ -1088,7 +1100,10 @@
         function closePasswordModal() {
             document.getElementById('passwordOverlay').classList.remove('visible');
             document.getElementById('prefixInput').value = '';
+            document.getElementById('prefixInput').placeholder = "例如：老王（可留空）";
             document.getElementById('pwdInput').value = '';
+            _lastPwdHasPrefix = false;
+            _pwdPrefixRequired = false;
             if (_pwdResolve) { _pwdResolve(null); _pwdResolve = null; }
         }
 
@@ -1097,10 +1112,13 @@
             const prefix = document.getElementById('prefixInput').value.trim();
             const pwd = document.getElementById('pwdInput').value;
             if (!pwd) { showToast('简令不能为空', 'error'); return; }
-            
+
+            // 记录本次弹窗是否使用了前缀
+            _lastPwdHasPrefix = !!prefix;
+
             // 如果前缀不为空，拼接前缀和密码作为最终密钥
             const finalPwd = prefix ? (prefix + pwd) : pwd;
-            
+
             document.getElementById('passwordOverlay').classList.remove('visible');
             if (_pwdResolve) { _pwdResolve(finalPwd); _pwdResolve = null; }
         };
@@ -1117,7 +1135,7 @@
                 e.preventDefault();
                 document.getElementById('pwdConfirmBtn').click();
             }
-        });        
+        });
         // 切换锁的状态
         function toggleLock() {
             if (isEncryptedMode) {
@@ -1125,6 +1143,7 @@
                 promptPassword('🔓 解锁系统').then(pwd => {
                     if (pwd === null) return;
                     currentPassword = pwd;
+                    currentPasswordHasPrefix = _lastPwdHasPrefix;
                     isEncryptedMode = false;
                     document.getElementById('lockBtn').textContent = '🔓';
                     document.getElementById('lockBtn').style.color = '#22c55e';
@@ -1135,6 +1154,7 @@
                 promptPassword('🔒 锁定系统（设置加密简令）').then(pwd => {
                     if (pwd === null) return;
                     currentPassword = pwd;
+                    currentPasswordHasPrefix = _lastPwdHasPrefix;
                     isEncryptedMode = true;
                     document.getElementById('lockBtn').textContent = '🔒';
                     document.getElementById('lockBtn').style.color = '#ef4444';
@@ -2901,6 +2921,7 @@
                 const pwd = await promptPassword('🔑 设置导出文件的简令（密码）');
                 if (!pwd) return;
                 currentPassword = pwd;
+                currentPasswordHasPrefix = _lastPwdHasPrefix;
                 isEncryptedMode = true;
                 document.getElementById('lockBtn').textContent = '🔒';
                 document.getElementById('lockBtn').style.color = '#ef4444';
@@ -2918,7 +2939,7 @@
             if (isEncryptedMode) {
                 showToast('正在加密...', 'info');
                 const jsonText = JSON.stringify(data);
-                const encryptedObj = await encryptText(jsonText, currentPassword);
+                const encryptedObj = await encryptText(jsonText, currentPassword, currentPasswordHasPrefix);
                 fileContent = JSON.stringify(encryptedObj, null, 2);
                 fileName = '三盘映射_加密备份_' + new Date().toISOString().slice(0, 10) + '.json';
             } else {
@@ -2985,17 +3006,27 @@
                 const parsed = JSON.parse(text);
                 if (parsed.type === "encrypted_index") {
                     let decryptedSuccess = false;
+                    const requiresPrefix = parsed.has_prefix === true; // 从密文中读取
+                    
                     while (!decryptedSuccess) {
-                        const pwd = await promptPassword('🔒 导入加密索引，请输入简令');
+                        // 如果密文要求前缀，我们就让弹窗提示严格一点
+                        const pwd = await promptPassword('🔒 导入加密索引，请输入简令', requiresPrefix);
                         if (!pwd) return; 
+                        
                         showToast('正在解密...', 'info');
                         try {
                             text = await decryptText(parsed, pwd);
                             currentPassword = pwd;
+                            currentPasswordHasPrefix = _lastPwdHasPrefix;
                             decryptedSuccess = true; 
                             showToast('✅ 解密成功', 'success');
                         } catch (decErr) {
-                            showToast('❌ 密码错误，请重新输入', 'error', 2000);
+                            // 【升级提示语】：如果是要求前缀，提示不同
+                            if (requiresPrefix) {
+                                showToast('❌ 解密失败：请检查前缀和密码是否都输入了', 'error', 3000);
+                            } else {
+                                showToast('❌ 密码错误，请重新输入', 'error', 2000);
+                            }
                         }
                     }
                 }
@@ -3080,7 +3111,7 @@
                             if (!cloud || !cloud.name) return;
                             const treeId = ensureCloudTree(cloud.name);
                             const cloudParent = getOrCreateDir(treeId, cloud.path || '');
-                            const cloudFile = getOrCreateFile(treeId, cloudParent, obj.encrypted_name, obj.sizes?.encrypted);
+                            const cloudFile = getOrCreateFile(cloudId, cloudParent, obj.encrypted_name, obj.sizes?.encrypted);
 
                             if (localFile && cloudFile) {
                                 data.links.push({
