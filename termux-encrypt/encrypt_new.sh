@@ -4,14 +4,26 @@ shopt -s nullglob
 # ============================================================
 #  全局配置
 # ============================================================
-DECRYPT_ROOT="/storage/emulated/0/Documents/Encrypted_Vault/解密输出"
-ENCRYPT_ROOT="/storage/emulated/0/Documents/Encrypted_Vault/加密文件"
-MAPPING_ROOT="/storage/emulated/0/Documents/Encrypted_Vault/对照表"
-GLOBAL_INDEX="/storage/emulated/0/encrypted_index.txt"
+# 获取脚本所在目录的上一级（即项目根目录）
+BASE_DIR="$(dirname "$(pwd)")"
+
+# 如果是手机上（有 /storage 目录），用手机路径；否则用电脑的 test_vault
+if [ -d "/storage/emulated/0" ]; then
+    DECRYPT_ROOT="$BASE_DIR/test_vault/解密输出"
+    ENCRYPT_ROOT="$BASE_DIR/test_vault/加密文件"
+    MAPPING_ROOT="$BASE_DIR/test_vault/对照表"
+    GLOBAL_INDEX="/storage/emulated/0/encrypted_index.txt"
+else
+    DECRYPT_ROOT="$BASE_DIR/test_vault/解密输出"
+    ENCRYPT_ROOT="$BASE_DIR/test_vault/加密文件"
+    MAPPING_ROOT="$BASE_DIR/test_vault/对照表"
+    GLOBAL_INDEX="$BASE_DIR/test_vault/encrypted_index.txt"
+fi
+
 INDEX_JSON="$MAPPING_ROOT/index.jsonl"
 PASSWORDS_FILE="$MAPPING_ROOT/passwords.txt"
 CACHE_FILE="$MAPPING_ROOT/.enc_cache"
-PAR2_ROOT="/storage/emulated/0/Documents/Encrypted_Vault/Par2_Backups"
+PAR2_ROOT="$BASE_DIR/test_vault/Par2_Backups"
 
 mkdir -p "$MAPPING_ROOT" "$(dirname "$GLOBAL_INDEX")" "$PAR2_ROOT"
 touch "$PASSWORDS_FILE"
@@ -20,17 +32,26 @@ touch "$PASSWORDS_FILE"
 #  核心辅助函数
 # ============================================================
 get_relative_path() {
-    local rel_path="${PWD#/storage/emulated/0/}"
-    rel_path="${rel_path#/sdcard/}"
-    local encrypt_root_clean="${ENCRYPT_ROOT#/storage/emulated/0/}"
-    rel_path="${rel_path#$encrypt_root_clean}"
-    rel_path="${rel_path#/}"
-    rel_path="${rel_path# Documents/}"
-    rel_path="${rel_path#爱-Allow/name1/}"
-    rel_path="${rel_path#爱-Allow/}"
-    rel_path=$(echo "$rel_path" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[[:space:]][[:space:]]*/ /g')
-    [[ -z "$rel_path" ]] && rel_path="."
-    echo "$rel_path"
+    # 在电脑端，直接返回当前目录名（如果是根目录就是 .）
+    if [[ -d "/storage/emulated/0" ]]; then
+        local rel_path="${PWD#/storage/emulated/0/}"
+        rel_path="${rel_path#/sdcard/}"
+        local encrypt_root_clean="${ENCRYPT_ROOT#/storage/emulated/0/}"
+        rel_path="${rel_path#$encrypt_root_clean}"
+        rel_path="${rel_path#/}"
+        rel_path="${rel_path# Documents/}"
+        rel_path=$(echo "$rel_path" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[[:space:]][[:space:]]*/ /g')
+        [[ -z "$rel_path" ]] && rel_path="."
+        echo "$rel_path"
+    else
+        # 电脑端：直接返回当前目录文件夹名，如果当前是项目根目录，就返回 "."
+        local current_dir=$(basename "$PWD")
+        if [[ "$current_dir" == "termux-encrypt" || "$current_dir" == "Privacy-Storage-Toolchain" ]]; then
+            echo "."
+        else
+            echo "$current_dir"
+        fi
+    fi
 }
 
 get_password() {
@@ -52,16 +73,16 @@ log_encrypted_file() {
 human_size() {
     local b=$1
     if [[ $b -ge 1073741824 ]]; then
-        echo "$(echo "scale=2; $b/1073741824" | bc) GB"
+        echo "$(( b / 1073741824 )) GB"
     elif [[ $b -ge 1048576 ]]; then
-        echo "$(echo "scale=2; $b/1048576" | bc) MB"
+        echo "$(( b / 1048576 )) MB"
     elif [[ $b -ge 1024 ]]; then
-        echo "$(echo "scale=2; $b/1024" | bc) KB"
+        echo "$(( b / 1024 )) KB"
     else
         echo "$b B"
     fi
 }
-
+    
 unique_filename() {
     local target_dir="$1"
     local base_name="$2"
@@ -83,7 +104,7 @@ _build_cache() {
     echo "🔄 正在扫描本地加密文件..." >&2
     mkdir -p "$MAPPING_ROOT"
     > "$CACHE_FILE"
-    find /storage/emulated/0/ -type f -name 'enc_*.dat' \
+    find "$BASE_DIR/test_vault" -type f -name 'enc_*.dat' \
         \( -not -path "*/Android/*" -not -path "*/mapcache/*" -not -path "*/scenic/*" -not -path "*/vmap/*" \) \
         -print0 2>/dev/null | while IFS= read -r -d '' f; do
         local enc=$(basename "$f" .dat)
@@ -334,22 +355,25 @@ ea() {
     # --- 如果有成功加密的文件，一次性写入索引 ---
     if [[ ${#success_records[@]} -gt 0 ]]; then
         echo "📝 正在更新索引（${#success_records[@]} 个文件）..."
-        # 追加到主索引和辅助索引
-        local tmp_idx="$MAPPING_ROOT/.tmp_global_index.txt"
-        local tmp_json="$MAPPING_ROOT/.tmp_index.json"
-        cat "$GLOBAL_INDEX" > "$tmp_idx"
+                        # 确保目录和文件存在
+        mkdir -p "$MAPPING_ROOT"
+        touch "$GLOBAL_INDEX"
+        touch "$INDEX_JSON"
+
         for record in "${success_records[@]}"; do
             IFS='|' read -r enc orig path size sha created <<< "$record"
-echo "$enc | $orig | $path |  |  | $size" >> "$tmp_idx"
-printf '{"encrypted_name":"%s","original_name":"%s","relative_path":"%s","clouds":[],"cipher":"AES-256-CBC","created_at":"%s","sha256":"%s","sizes":{"encrypted":%s}}\n' \
-  "$enc" "$orig" "$path" "$created" "$sha" "$size" >> "$tmp_json"
-            # 同时更新 .enc_sizes.txt
+            
+            # 直接追加到 txt，不搞临时文件
+            echo "$enc | $orig | $path |  |  | $size" >> "$GLOBAL_INDEX"
+            
+            # 直接追加到 jsonl
+            printf '{"encrypted_name":"%s","original_name":"%s","relative_path":"%s","clouds":[],"cipher":"AES-256-CBC","created_at":"%s","sha256":"%s","sizes":{"encrypted":%s}}\n' \
+              "$enc" "$orig" "$path" "$created" "$sha" "$size" >> "$INDEX_JSON"
+              
+            # 更新其他辅助文件
             echo "$enc|$size" >> "$MAPPING_ROOT/.enc_sizes.txt"
-            # 更新对照表
             echo "$enc = $orig" >> "$MAPPING_ROOT/加密对照表.txt"
         done
-        mv "$tmp_idx" "$GLOBAL_INDEX"
-        mv "$tmp_json" "$INDEX_JSON"
         echo "✅ 索引更新完成。"
         # 重建辅助索引
         rebuild_idx
@@ -1132,11 +1156,31 @@ setcloud() {
         ' "$GLOBAL_INDEX" > "$GLOBAL_INDEX.tmp" && mv "$GLOBAL_INDEX.tmp" "$GLOBAL_INDEX"
     done
     # 同步云盘信息到 index.jsonl
+        # 纯 Bash 同步云盘信息到 index.jsonl（免去 Python 依赖，全平台兼容）
+    mkdir -p "$MAPPING_ROOT"
+    touch "$INDEX_JSON"
     for idx in "${selected_indices[@]}"; do
         local item="${missing_items[$idx]}"
         IFS='|' read -r _enc _orig _path _size <<< "$item"
-        python3 "$HOME/Privacy-Storage-Toolchain/termux-encrypt/sync_clouds.py" "$INDEX_JSON" "$_enc" "$cloud_name" "$cloud_path" >/dev/null 2>&1 || true
-    done
+        
+        local new_clouds="[{\"name\":\"$cloud_name\",\"path\":\"$cloud_path\"}]"
+        local tmp_jsonl="${INDEX_JSON}.tmp"
+        > "$tmp_jsonl"
+        
+        if [[ -f "$INDEX_JSON" ]]; then
+            while IFS= read -r line; do
+                # 匹配对应的 encrypted_name
+                if [[ "$line" == *"$_enc"* ]]; then
+                    # 用 sed 把空的或者旧的 clouds 数组替换成新的
+                    local new_line=$(echo "$line" | sed -E "s|\"clouds\":\[[^]]*\]|\"clouds\":$new_clouds|g")
+                    echo "$new_line" >> "$tmp_jsonl"
+                else
+                    echo "$line" >> "$tmp_jsonl"
+                fi
+            done < "$INDEX_JSON"
+            mv "$tmp_jsonl" "$INDEX_JSON"
+        fi
+    done 
     echo "✅ 已更新 ${#selected_indices[@]} 条记录的云盘信息。"
 }
 
@@ -1429,7 +1473,7 @@ org() {
     while IFS= read -r -d '' f; do
         dat_files+=("$f")
     done < <(
-        find /storage/emulated/0/ -type f -name 'enc_*.dat' "${find_exclude[@]}" -print0 2>/dev/null
+        find "$BASE_DIR/test_vault" -type f -name 'enc_*.dat' "${find_exclude[@]}" -print0 2>/dev/null
     )
     [[ ${#dat_files[@]} -eq 0 ]] && echo "未找到任何 enc_*.dat 文件。" && return
     echo "找到 ${#dat_files[@]} 个加密文件，开始整理..."
@@ -1643,9 +1687,6 @@ h() {
         *) echo "❌ 未知命令: $cmd" ;;
     esac
 }
-# ============================================================
-#  初始化
-# ============================================================
 # ============================================================
 #  初始化
 # ============================================================

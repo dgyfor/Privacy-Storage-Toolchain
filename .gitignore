@@ -13,3 +13,9 @@ docs/老王毕设-快照-*.json
 docs/老王毕设-文件位置-*.json
 *快照*.json
 *文件位置*.json
+test_vault/
+archive/
+*.bak
+my_secret_doc.txt
+secret.txt
+par2.exe
