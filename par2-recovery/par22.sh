@@ -46,7 +46,7 @@ par22() {
         echo "📊 进度: [$count/$total] - 正在处理 $base"
         
         # 如果已存在主文件或卷文件则跳过
-        if [ -f "$target_dir/${base}.par2" ] || ls "$target_dir/${base}.vol"*.par2 >/dev/null 2>&1; then
+        if [ -f "$target_dir/${base}.par2" ] || compgen -G "$target_dir/${base}.vol*.par2" >/dev/null; then
             echo "⏩ 跳过 $base（已存在）"
             ((skip++))
             continue
