@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Privacy Storage Toolchain</title>
+    <style>
+        body { background: #1e1e1e; color: white; font-family: sans-serif; text-align: center; padding-top: 100px; }
+        button { padding: 15px 30px; font-size: 18px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; }
+        button:hover { background: #2563eb; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ 个人隐私文件管理系统</h1>
+    <p>基于端侧加密与多云盘映射的安全工具链</p>
+    <br>
+    <button id="testBtn">一键测试调用</button>
+    <p id="status" style="margin-top: 20px; color: #86efac;"></p>
+
+    <script>
+        const { exec } = require('child_process');
+        document.getElementById('testBtn').addEventListener('click', () => {
+            document.getElementById('status').innerText = "正在调用底层引擎...";
+            
+            exec('echo 底层引擎已启动', { windowsHide: true }, (error, stdout, stderr) => {
+                if (error) {
+                    document.getElementById('status').innerText = "调用失败: " + error.message;
+                    return;
+                }
+                document.getElementById('status').innerText = "✅ 底层引擎调用成功！";
+                console.log(stdout);
+            });
+        });
+    </script>
+</body>
+</html>

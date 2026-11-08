@@ -1,0 +1,13 @@
+{
+  "name": "privacy-storage-toolchain-gui",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "王传正",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}
