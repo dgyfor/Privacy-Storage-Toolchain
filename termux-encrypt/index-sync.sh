@@ -9,9 +9,26 @@ info() { printf '[index-sync] %s\n' "$*" >&2; }
 mode="$1"; src="$2"; dst="$3"
 LOCK_DIR="${dst}.lock"
 TMP_FILES=()
-cleanup() { for f in "${TMP_FILES[@]:-}"; do [[ -f "$f" ]] && rm -f -- "$f"; done; rmdir "$LOCK_DIR" 2>/dev/null || true; }
+LOCK_HELD=0
+
+cleanup() {
+    local f
+    for f in "${TMP_FILES[@]:-}"; do
+        [[ -f "$f" ]] && rm -f -- "$f" || true
+    done
+    if [[ "$LOCK_HELD" -eq 1 ]]; then
+        rmdir "$LOCK_DIR" 2>/dev/null || true
+    fi
+    return 0
+}
 trap cleanup EXIT INT TERM
-mkdir "$LOCK_DIR" 2>/dev/null || die "无法获取锁（另一个进程正在操作索引）"
+
+# 只有成功 mkdir 的进程才把 LOCK_HELD 置 1
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    die "无法获取锁（另一个进程正在操作索引）"
+fi
+LOCK_HELD=1
+
 case "$mode" in
     encrypt)
         [[ -f "$src" ]] || die "明文索引不存在: $src"
@@ -19,7 +36,7 @@ case "$mode" in
         backup="${dst}.bak"
         TMP_FILES+=("$tmp")
         bash "$ENGINE" encrypt-index "$src" "$tmp" || die "加密失败"
-        [[ -f "$dst" ]] && cp -f -- "$dst" "$backup"
+        [[ -f "$dst" ]] && cp -f -- "$dst" "$backup" || true
         mv -f -- "$tmp" "$dst" || die "原子替换失败"
         info "索引已加密: $dst"
         ;;

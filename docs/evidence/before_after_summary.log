@@ -1,0 +1,16 @@
+============================================================
+BEFORE: v1.3 CTR+HMAC —— 子密钥出现在进程命令行
+============================================================
+   61401    1529    1526 pty0     10:57:19 "D:\Program Files\Git\ucrt64\bin\openssl.exe" dgst -sha256 -hmac b747f33d50a2f863807ae1378da76c6a75c9ff94a08685c23d3f6e9460b11439 -binary 
+
+============================================================
+AFTER: v2.0 AES-256-GCM —— 命令行仅含文件路径，无密钥材料
+============================================================
+   61401    1184    1180 pty0     10:51:34 "D:\Program Files\nodejs\node.exe" D:/Code/Privacy-Storage-Toolchain/termux-encrypt/crypto-engine.js encrypt D:/DevCaches/Temp/big.dat D:/DevCaches/Temp/big.enc 
+                   ypt/crypto-engine.js encrypt D:/DevCaches/Temp/big.dat D:/DevCaches/Temp/big.enc
+
+============================================================
+结论：
+  v1.3 的 -hmac 子密钥在 ps 完全可见；
+  v2.0 迁移 Node.js crypto 后，argv 与进程列表均不含密钥。
+============================================================

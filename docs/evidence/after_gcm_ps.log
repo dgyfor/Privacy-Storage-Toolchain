@@ -1,0 +1,21 @@
+==================================================
+--- 快照 1（进程存活） ---
+   61401    1184    1180 pty0     10:51:34 "D:\Program Files\nodejs\node.exe" D:/Code/Privacy-Storage-Toolchain/termux-encrypt/crypto-engine.js encrypt D:/DevCaches/Temp/big.dat D:/DevCaches/Temp/big.enc 
+
+ProcessId Name     CommandLine                                                                     
+--------- ----     -----------                                                                     
+    13548 node.exe "D:\Program Files\nodejs\node.exe" D:/Code/Privacy-Storage-Toolchain/termux-encr
+                   ypt/crypto-engine.js encrypt D:/DevCaches/Temp/big.dat D:/DevCaches/Temp/big.enc
+
+
+
+--- 快照 2（进程存活） ---
+   61401    1184    1180 pty0     10:51:34 "D:\Program Files\nodejs\node.exe" D:/Code/Privacy-Storage-Toolchain/termux-encrypt/crypto-engine.js encrypt D:/DevCaches/Temp/big.dat D:/DevCaches/Temp/big.enc 
+
+[采样 3] 加密进程已结束，停止采样
+==================================================
+加密退出码: 0
+--- 加密输出 ---
+[crypto-engine] 加密完成: D:/DevCaches/Temp/big.enc (524288044 bytes)
+
+完整日志已保存到: /tmp/ps_snapshot.log

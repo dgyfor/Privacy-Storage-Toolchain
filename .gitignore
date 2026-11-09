@@ -31,6 +31,11 @@ secret.txt
 # ==========================================
 node_modules/
 desktop-gui/node_modules/
+# 忽略 electron 产生的临时文件与打包产物
+desktop-gui/electron
+desktop-gui/privacy-storage-toolchain-gui*
+desktop-gui/dist/
+desktop-gui/release/
 mapping-spa/public/
 
 # ==========================================
