@@ -1,33 +1,228 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
-    <title>Privacy Storage Toolchain</title>
+    <title>隐私文件管理系统</title>
     <style>
-        body { background: #1e1e1e; color: white; font-family: sans-serif; text-align: center; padding-top: 100px; }
-        button { padding: 15px 30px; font-size: 18px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; }
-        button:hover { background: #2563eb; }
+        body { background: #121212; color: #eee; font-family: 'Segoe UI', sans-serif; padding: 20px; display: flex; justify-content: center;}
+        .main-card { width: 800px; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h2 { text-align: center; color: #3b82f6; margin-top: 0;}
+        .tabs { display: flex; gap: 10px; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        .tab-btn { background: transparent; border: none; color: #888; font-size: 16px; padding: 8px 16px; cursor: pointer; border-radius: 6px; transition: 0.2s;}
+        .tab-btn:hover { background: #2d2d2d; color: #fff; }
+        .tab-btn.active { background: #3b82f6; color: white; font-weight: bold;}
+        .panel { display: none; }
+        .panel.active { display: block; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #ccc; font-size: 14px;}
+        input[type="file"] { width: 100%; color: #aaa; padding: 10px; background: #2d2d2d; border: 1px solid #444; border-radius: 6px; box-sizing: border-box;}
+        input[type="password"] { width: 100%; padding: 10px; background: #2d2d2d; border: 1px solid #444; color: white; border-radius: 6px; box-sizing: border-box;}
+        button.action-btn { width: 100%; padding: 12px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 10px;}
+        button.action-btn:hover { background: #059669; }
+        .btn-blue { background: #3b82f6 !important; }
+        .btn-blue:hover { background: #2563eb !important; }
+        .btn-orange { background: #f59e0b !important; }
+        .btn-orange:hover { background: #d97706 !important; }
+        #logBox { margin-top: 20px; background: #000; color: #00ff00; padding: 15px; height: 200px; overflow-y: auto; font-family: monospace; font-size: 13px; border-radius: 6px; border: 1px solid #333; white-space: pre-wrap; }
+
+        /* ★ 拖拽区域统一样式 */
+        .drop-zone {
+            border: 1px dashed rgba(255,255,255,0.10);
+            border-radius: 8px;
+            padding: 10px;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .drop-zone.drag-over {
+            background: rgba(59, 130, 246, 0.12);
+            border-color: #3b82f6;
+        }
     </style>
 </head>
 <body>
-    <h1>🛡️ 个人隐私文件管理系统</h1>
-    <p>基于端侧加密与多云盘映射的安全工具链</p>
-    <br>
-    <button id="testBtn">一键测试调用</button>
-    <p id="status" style="margin-top: 20px; color: #86efac;"></p>
+    <div class="main-card">
+        <h2>🛡️ 隐私文件管理系统</h2>
+        
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('encrypt')">🔒 端侧加密</button>
+            <button class="tab-btn" onclick="switchTab('decrypt')">🔓 文件解密</button>
+            <button class="tab-btn" onclick="switchTab('backup')">🛡️ 容灾修复</button>
+        </div>
+
+        <!-- 加密面板 -->
+        <div id="panel-encrypt" class="panel active">
+            <div class="form-group drop-zone">
+                <label>选择要加密的隐私文件（可拖入）：</label>
+                <input type="file" id="encFile" />
+            </div>
+            <div class="form-group">
+                <label>输入主密码（PBKDF2 派生）：</label>
+                <input type="password" id="encPwd" placeholder="请输入高强度密码..." />
+            </div>
+            <button class="action-btn btn-blue" onclick="doEncrypt()">开始加密</button>
+        </div>
+
+        <!-- 解密面板 -->
+        <div id="panel-decrypt" class="panel">
+            <div class="form-group drop-zone">
+                <label>选择要解密的 .enc 文件（可拖入）：</label>
+                <input type="file" id="decFile" accept=".enc" />
+            </div>
+            <div class="form-group">
+                <label>输入主密码：</label>
+                <input type="password" id="decPwd" placeholder="请输入主密码..." />
+            </div>
+            <button class="action-btn" onclick="doDecrypt()">开始解密</button>
+        </div>
+
+        <!-- 容灾面板 -->
+        <div id="panel-backup" class="panel">
+            <div class="form-group drop-zone">
+                <label>选择已加密的文件（生成 PAR2 冗余，可拖入）：</label>
+                <input type="file" id="bakFile" />
+            </div>
+            <button class="action-btn btn-orange" onclick="doBackup()">生成容灾备份</button>
+            
+            <hr style="border-color: #333; margin: 20px 0;">
+            
+            <div class="form-group drop-zone">
+                <label>选择 PAR2 校验包（支持多选 / 整包拖入）：</label>
+                <input type="file" id="repFile" accept=".par2" multiple />
+            </div>
+            <button class="action-btn" onclick="doRepair()">一键修复损坏</button>
+        </div>
+
+        <div id="logBox">[系统就绪] 等待操作...</div>
+    </div>
 
     <script>
-    document.getElementById('testBtn').addEventListener('click', async () => {
-        document.getElementById('status').innerText = "正在调用底层引擎...";
-        const res = await window.pst.testEngine();
-        if (!res.ok) {
-            document.getElementById('status').innerText = "调用失败: " + res.error;
-            return;
+        const logBox = document.getElementById('logBox');
+        const $ = id => document.getElementById(id);
+
+        // ★ 底层未就绪时的保护，避免报错
+        if (window.pst && typeof window.pst.onProgress === 'function') {
+            window.pst.onProgress((msg) => {
+                logBox.innerText += msg;
+                logBox.scrollTop = logBox.scrollHeight;
+            });
         }
-        document.getElementById('status').innerText = "✅ 底层引擎调用成功！";
-        console.log(res.output);
-    });
-</script>
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.querySelector(`.tab-btn[onclick="switchTab('${tabId}')"]`).classList.add('active');
+            $('panel-' + tabId).classList.add('active');
+        }
+
+        // ================= 核心功能 =================
+
+        async function doEncrypt() {
+            const f = $('encFile').files[0];
+            const p = $('encPwd').value;
+            if (!f || !p) return alert("请选择文件并输入密码");
+            logBox.innerText = `[开始] 正在加密: ${f.name}\n`;
+            const res = await window.pst.encryptFile(window.pst.getFilePath(f), p);
+            logBox.innerText += res.ok
+                ? `✅ 加密成功，文件保存在源文件目录下\n`
+                : `❌ 失败: ${res.error}\n`;
+        }
+
+        async function doDecrypt() {
+            const f = $('decFile').files[0];
+            const p = $('decPwd').value;
+            if (!f || !p) return alert("请选择文件并输入密码");
+            logBox.innerText = `[开始] 正在解密: ${f.name}\n`;
+            const res = await window.pst.decryptFile(window.pst.getFilePath(f), p);
+            logBox.innerText += res.ok
+                ? `✅ 解密成功，文件保存在源文件目录下\n`
+                : `❌ 失败: ${res.error} (密码错误或文件被篡改)\n`;
+        }
+
+        async function doBackup() {
+            const f = $('bakFile').files[0];
+            if (!f) return alert("请选择加密文件");
+            logBox.innerText = `[容灾] 正在生成校验包...\n`;
+            const res = await window.pst.createBackup(window.pst.getFilePath(f));
+            logBox.innerText += res.ok ? `✅ ${res.output}\n` : `❌ 失败: ${res.error}\n`;
+        }
+
+        // ★ 多选 + 自动挑出主 .par2 文件（非 .vol 卷文件）
+        async function doRepair() {
+            const input = $('repFile');
+            if (!input.files || input.files.length === 0) return alert("请选择 .par2 文件");
+
+            // 主文件特征：文件名中不含 .vol（.vol00+01.par2 之类是卷文件）
+            let mainFile = [...input.files].find(f => !/\.vol/i.test(f.name)) || input.files[0];
+
+            logBox.innerText = `[修复] 已识别 ${input.files.length} 个 PAR2 文件，主文件：${mainFile.name}\n`;
+            logBox.innerText += `[修复] 正在尝试修复损坏文件...\n`;
+
+            const res = await window.pst.repairFile(window.pst.getFilePath(mainFile));
+            logBox.innerText += res.ok ? `✅ ${res.output}\n` : `❌ 失败: ${res.error}\n`;
+        }
+
+        // ================= 通用拖拽绑定 =================
+        /**
+         * @param {HTMLElement} zone   拖放区域
+         * @param {HTMLInputElement} input 目标 input
+         * @param {(file: File) => boolean} accept 文件过滤器
+         * @param {string} hint 拒绝时的提示语
+         */
+        function bindDropZone(zone, input, accept = () => true, hint = '') {
+            const setActive = on => zone.classList.toggle('drag-over', on);
+
+            zone.addEventListener('dragover', e => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                setActive(true);
+            });
+            zone.addEventListener('dragenter', e => {
+                e.preventDefault();
+                setActive(true);
+            });
+            zone.addEventListener('dragleave', e => {
+                // 鼠标在子元素之间移动不取消高亮
+                if (e.relatedTarget && zone.contains(e.relatedTarget)) return;
+                setActive(false);
+            });
+            zone.addEventListener('drop', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                setActive(false);
+
+                const files = [...e.dataTransfer.files].filter(accept);
+                if (files.length === 0) {
+                    if (hint) logBox.innerText += `[提示] ${hint}\n`;
+                    return;
+                }
+
+                // ★ 用 DataTransfer 重建 FileList，过滤器才真正生效
+                const dt = new DataTransfer();
+                files.forEach(f => dt.items.add(f));
+                input.files = dt.files;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                logBox.innerText += `[拖入] ${files.map(f => f.name).join('、')}\n`;
+            });
+        }
+
+        // ================= 绑定 =================
+        // 加密 / 解密：任意文件
+        bindDropZone($('panel-encrypt'), $('encFile'));
+        bindDropZone($('panel-decrypt'), $('decFile'));
+
+        // 容灾：两个独立区域，天然分流
+        bindDropZone(
+            $('bakFile').closest('.drop-zone'),
+            $('bakFile'),
+            f => !/\.par2$/i.test(f.name),
+            '这是“生成备份”框，请拖入加密后的文件；PAR2 请拖到下方修复框'
+        );
+        bindDropZone(
+            $('repFile').closest('.drop-zone'),
+            $('repFile'),
+            f => /\.par2$/i.test(f.name),
+            '修复框只接收 .par2 校验文件'
+        );
+    </script>
 </body>
 </html>

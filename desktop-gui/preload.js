@@ -1,6 +1,17 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-// 只暴露白名单 API，不暴露 ipcRenderer 本身
 contextBridge.exposeInMainWorld('pst', {
-  testEngine: () => ipcRenderer.invoke('pst:test-engine')
+  testEngine: () => ipcRenderer.invoke('pst:test-engine'),
+
+  getFilePath: (file) => webUtils.getPathForFile(file),
+
+  encryptFile: (filePath, password) => ipcRenderer.invoke('pst:encrypt-file', { filePath, password }),
+  decryptFile: (filePath, password) => ipcRenderer.invoke('pst:decrypt-file', { filePath, password }),
+
+  createBackup: (filePath) => ipcRenderer.invoke('pst:create-backup', { filePath }),
+  repairFile: (par2Path) => ipcRenderer.invoke('pst:repair-file', { par2Path }),
+
+  onProgress(cb) {
+    ipcRenderer.on('pst:progress', (_, data) => cb(data));
+  },
 });
