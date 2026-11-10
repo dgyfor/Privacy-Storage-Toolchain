@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>Privacy Storage Toolchain</title>
     <style>
         body { background: #1e1e1e; color: white; font-family: sans-serif; text-align: center; padding-top: 100px; }
@@ -17,19 +18,16 @@
     <p id="status" style="margin-top: 20px; color: #86efac;"></p>
 
     <script>
-        const { exec } = require('child_process');
-        document.getElementById('testBtn').addEventListener('click', () => {
-            document.getElementById('status').innerText = "正在调用底层引擎...";
-            
-            exec('echo 底层引擎已启动', { windowsHide: true }, (error, stdout, stderr) => {
-                if (error) {
-                    document.getElementById('status').innerText = "调用失败: " + error.message;
-                    return;
-                }
-                document.getElementById('status').innerText = "✅ 底层引擎调用成功！";
-                console.log(stdout);
-            });
-        });
-    </script>
+    document.getElementById('testBtn').addEventListener('click', async () => {
+        document.getElementById('status').innerText = "正在调用底层引擎...";
+        const res = await window.pst.testEngine();
+        if (!res.ok) {
+            document.getElementById('status').innerText = "调用失败: " + res.error;
+            return;
+        }
+        document.getElementById('status').innerText = "✅ 底层引擎调用成功！";
+        console.log(res.output);
+    });
+</script>
 </body>
 </html>
