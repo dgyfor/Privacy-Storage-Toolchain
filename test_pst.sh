@@ -9,7 +9,6 @@ trap 'rm -rf "$TMP"' EXIT
 
 echo "=== 0. 环境检查 ==="
 command -v openssl >/dev/null || { echo "NO openssl"; exit 1; }
-command -v xxd     >/dev/null || { echo "NO xxd";     exit 1; }
 openssl version
 
 echo "=== 1. 普通加密→解密→哈希一致 ==="

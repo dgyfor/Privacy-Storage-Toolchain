@@ -1,0 +1,13 @@
+=== OpenSSL enc 不支持 AES-GCM 的实测证据 ===
+时间: Mon Nov  9 11:22:14 +08 2026
+平台: Termux (Android aarch64)
+OpenSSL 版本: OpenSSL 3.6.5 29 Sep 2026 (Library: OpenSSL 3.6.5 29 Sep 2026)
+
+--- 尝试 enc -aes-256-gcm -tag ---
+enc: Multiple cipher or unknown options: -aes-256-gcm and -tag
+enc: Use -help for summary.
+
+--- 结论 ---
+报错 'Multiple cipher or unknown options: -aes-256-gcm and -tag'
+原因: openssl enc 子命令官方不支持 AEAD（GCM/CCM），且未来不会支持
+影响: 无法通过 enc 实现 GCM，必须迁移到 Node.js crypto

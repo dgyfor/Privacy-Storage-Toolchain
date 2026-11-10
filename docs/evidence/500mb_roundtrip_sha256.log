@@ -1,0 +1,22 @@
+=== 大文件 GCM 往返正确性（Termux） ===
+时间: Mon Nov  9 11:22:55 +08 2026
+平台: Termux (Android aarch64)
+Node 版本: v26.13.0
+
+--- 生成 100MB 随机文件 ---
+100+0 records in
+100+0 records out
+104857600 bytes (105 MB, 100 MiB) copied, 0.281819 s, 372 MB/s
+-rw-------. 1 u0_a360 u0_a360 104857600 Nov  9 11:22 /data/data/com.termux/files/home/big_termux.dat
+原始大小: 104857600 bytes
+
+--- 加密 ---
+密文大小: 104857644 bytes（应为原始大小 + 44）
+
+--- 解密 ---
+
+--- sha256 对比 ---
+3d796d688e6f8d4b30c2b46c223031cd36630e9611996f713fa7bf86e43bd416  /data/data/com.termux/files/home/big_termux.dat
+3d796d688e6f8d4b30c2b46c223031cd36630e9611996f713fa7bf86e43bd416  /data/data/com.termux/files/home/big_termux.dec
+
+判定: 两行哈希一致即通过
